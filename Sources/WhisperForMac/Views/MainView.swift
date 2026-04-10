@@ -67,7 +67,7 @@ struct MainView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Local Whisper Transcription")
                 .font(.largeTitle.weight(.bold))
-            Text("Transcribe or translate audio and video files on this Mac using a managed local Whisper environment.")
+            Text("Transcribe or translate audio and video files on this Mac using a self-contained native whisper.cpp engine.")
                 .foregroundStyle(.secondary)
         }
     }
@@ -92,9 +92,14 @@ struct MainView: View {
                     Text(url.pathExtension.uppercased())
                 }
                 GridRow {
-                    Text("Backend")
+                    Text("Engine")
                         .foregroundStyle(.secondary)
-                    Text(appState.backendStatus.environmentReady ? "Ready" : "Needs Setup")
+                    Text(appState.backendStatus.engineReady ? "Ready" : "Unavailable")
+                }
+                GridRow {
+                    Text("Installed Models")
+                        .foregroundStyle(.secondary)
+                    Text("\(appState.installedModelCount)")
                 }
             }
         } label: {
@@ -105,9 +110,9 @@ struct MainView: View {
     private var footerActions: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
-                Text(appState.backendStatus.environmentReady ? "Managed backend ready" : "Managed backend not ready")
+                Text(appState.statusHeadline)
                     .font(.subheadline.weight(.medium))
-                Text(appState.backendStatus.errorMessage ?? appState.backendSetupMessage)
+                Text(appState.statusDetailText)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -116,7 +121,7 @@ struct MainView: View {
                 appState.showConfirmation()
             }
             .keyboardShortcut(.defaultAction)
-            .disabled(appState.selectedFileURL == nil || appState.selectedFileError != nil || appState.jobState.isBusy)
+            .disabled(!appState.canStartTranscription)
         }
     }
 }

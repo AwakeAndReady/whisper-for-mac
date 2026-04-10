@@ -12,11 +12,33 @@ let package = Package(
         .executable(name: "WhisperForMac", targets: ["WhisperForMac"]),
     ],
     targets: [
+        .target(
+            name: "whisper",
+            path: "Vendor/whisper",
+            exclude: [
+                "ggml-metal.m",
+                "ggml-metal.metal",
+                "coreml",
+            ],
+            sources: [
+                "ggml.c",
+                "ggml-alloc.c",
+                "ggml-backend.c",
+                "ggml-quants.c",
+                "whisper.cpp",
+            ],
+            publicHeadersPath: "include",
+            cSettings: [
+                .unsafeFlags(["-Wno-shorten-64-to-32"]),
+                .define("GGML_USE_ACCELERATE"),
+            ],
+            linkerSettings: [
+                .linkedFramework("Accelerate"),
+            ]
+        ),
         .executableTarget(
             name: "WhisperForMac",
-            resources: [
-                .copy("Resources"),
-            ]
+            dependencies: ["whisper"]
         ),
         .testTarget(
             name: "WhisperForMacTests",

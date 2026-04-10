@@ -5,10 +5,10 @@ import Foundation
 final class AppState: ObservableObject {
     @Published var backendStatus: BackendStatus = .unavailable
     @Published var models: [WhisperModelInfo] = SupportedModels.all.map {
-        WhisperModelInfo(id: $0, displayName: SupportedModels.displayName(for: $0), isInstalled: false, installState: .notInstalled, localSizeBytes: nil)
+        WhisperModelInfo(id: $0.id, displayName: $0.displayName, isInstalled: false, installState: .notInstalled, localSizeBytes: nil, isMultilingual: $0.isMultilingual)
     }
     @Published var selectedFileURL: URL?
-    @Published var selectedModelID = "tiny"
+    @Published var selectedModelID = SupportedModels.all.first?.id ?? "tiny"
     @Published var selectedTask: WhisperTask = .transcribe
     @Published var selectedLanguageCode = "auto"
     @Published var jobState: TranscriptionJobState = .idle
@@ -38,7 +38,7 @@ final class AppState: ObservableObject {
     var canStartTranscription: Bool {
         selectedFileURL != nil &&
             selectedFileError == nil &&
-            backendStatus.environmentReady &&
+            backendStatus.engineReady &&
             (selectedModelInfo?.isInstalled ?? false) &&
             !jobState.isBusy
     }
@@ -46,6 +46,42 @@ final class AppState: ObservableObject {
     var resolvedOutputDirectory: URL? {
         guard let selectedFileURL else { return nil }
         return OutputDirectoryResolver.resolve(for: selectedFileURL, preferences: preferences)
+    }
+
+    var installedModelCount: Int {
+        models.filter(\.isInstalled).count
+    }
+
+    var statusHeadline: String {
+        if !backendStatus.engineReady {
+            return "Native whisper.cpp engine unavailable"
+        }
+        if !backendStatus.installedModelsAvailable {
+            return "No model installed yet"
+        }
+        if !(selectedModelInfo?.isInstalled ?? false) {
+            return "Choose an installed model to continue"
+        }
+        return "Native whisper.cpp engine ready"
+    }
+
+    var statusDetailText: String {
+        if let transientErrorMessage, !transientErrorMessage.isEmpty {
+            return transientErrorMessage
+        }
+        if let errorMessage = backendStatus.errorMessage, !errorMessage.isEmpty {
+            return errorMessage
+        }
+        if !backendStatus.installedModelsAvailable {
+            return "Open Settings > Models to download the Whisper model you want to use."
+        }
+        if !(selectedModelInfo?.isInstalled ?? false) {
+            return "The selected model is not installed locally yet."
+        }
+        if !backendSetupMessage.isEmpty {
+            return backendSetupMessage
+        }
+        return "Models are stored in Application Support and transcription runs fully on this Mac."
     }
 
     func initialize() async {
@@ -116,22 +152,6 @@ final class AppState: ObservableObject {
     func cancelTranscription() {
         backend.cancelCurrentWork()
         jobState = .failed(message: "The transcription was cancelled.")
-    }
-
-    func setupBackendEnvironment() {
-        backendSetupMessage = "Preparing managed environment"
-        Task {
-            do {
-                try await backend.setupEnvironment { [weak self] message in
-                    self?.backendSetupMessage = message
-                }
-                await refreshBackendStatus()
-                backendSetupMessage = "Managed environment is ready."
-            } catch {
-                backendSetupMessage = error.localizedDescription
-                transientErrorMessage = error.localizedDescription
-            }
-        }
     }
 
     func installModel(_ modelID: String) {

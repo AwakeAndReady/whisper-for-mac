@@ -43,8 +43,8 @@ struct ConfirmationSheetView: View {
                 }
             }
 
-            if !appState.backendStatus.environmentReady {
-                Label("The managed Whisper environment is not ready yet. Open Settings to install or repair it.", systemImage: "exclamationmark.triangle")
+            if !appState.backendStatus.installedModelsAvailable {
+                Label("No Whisper model is installed yet. Open Settings > Models and download the model you want before starting.", systemImage: "arrow.down.circle")
                     .foregroundStyle(.orange)
             } else if !(appState.selectedModelInfo?.isInstalled ?? false) {
                 Label("This model is not installed locally yet. Install it in Settings before starting.", systemImage: "arrow.down.circle")

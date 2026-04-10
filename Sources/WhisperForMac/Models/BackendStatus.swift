@@ -1,21 +1,17 @@
 import Foundation
 
 struct BackendStatus: Equatable {
-    var pythonAvailable: Bool
-    var pythonPath: String?
-    var ffmpegAvailable: Bool
-    var ffmpegPath: String?
-    var environmentReady: Bool
-    var environmentPath: String?
+    var engineReady: Bool
+    var engineVersion: String?
+    var modelStorePath: String?
+    var installedModelsAvailable: Bool
     var errorMessage: String?
 
     static let unavailable = BackendStatus(
-        pythonAvailable: false,
-        pythonPath: nil,
-        ffmpegAvailable: false,
-        ffmpegPath: nil,
-        environmentReady: false,
-        environmentPath: nil,
+        engineReady: false,
+        engineVersion: nil,
+        modelStorePath: nil,
+        installedModelsAvailable: false,
         errorMessage: nil
     )
 }

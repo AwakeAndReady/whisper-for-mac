@@ -19,6 +19,7 @@ struct TranscriptionOptionsView: View {
                         .disabled(!model.isInstalled)
                     }
                 }
+                .help("Models are downloaded in Settings. Unavailable models stay visible here but cannot be selected until installed.")
 
                 Picker("Task", selection: $appState.selectedTask) {
                     ForEach(WhisperTask.allCases) { task in
@@ -32,6 +33,9 @@ struct TranscriptionOptionsView: View {
                         Text(option.name).tag(option.code)
                     }
                 }
+                Text("Short clips can confuse auto-detect. If a quick test comes back empty, choose the spoken language manually.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Output Formats")

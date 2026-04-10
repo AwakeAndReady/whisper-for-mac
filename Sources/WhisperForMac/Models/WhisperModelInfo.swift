@@ -21,6 +21,7 @@ struct WhisperModelInfo: Identifiable, Equatable {
     var isInstalled: Bool
     var installState: WhisperModelInstallState
     var localSizeBytes: Int64?
+    var isMultilingual: Bool
 
     var statusText: String {
         switch installState {
@@ -35,5 +36,9 @@ struct WhisperModelInfo: Identifiable, Equatable {
         case let .failed(message):
             return message
         }
+    }
+
+    var capabilitySummary: String {
+        isMultilingual ? "Multilingual" : "English Only"
     }
 }

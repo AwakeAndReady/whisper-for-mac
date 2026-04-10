@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
@@ -7,7 +8,7 @@ struct SettingsView: View {
         TabView {
             backendTab
                 .tabItem {
-                    Label("Backend", systemImage: "server.rack")
+                    Label("Engine", systemImage: "server.rack")
                 }
 
             modelsTab
@@ -25,30 +26,35 @@ struct SettingsView: View {
 
     private var backendTab: some View {
         Form {
-            Section("Environment") {
-                LabeledContent("Python") {
-                    Text(appState.backendStatus.pythonPath ?? "Not Found")
+            Section("Engine") {
+                LabeledContent("Runtime") {
+                    Text("Native whisper.cpp")
                 }
-                LabeledContent("ffmpeg") {
-                    Text(appState.backendStatus.ffmpegPath ?? "Not Found")
+                LabeledContent("Version") {
+                    Text(appState.backendStatus.engineVersion ?? "Unavailable")
                 }
-                LabeledContent("Managed Environment") {
-                    Text(appState.backendStatus.environmentPath ?? "Not Created")
+                LabeledContent("Model Store") {
+                    Text(appState.backendStatus.modelStorePath ?? "Unavailable")
+                        .multilineTextAlignment(.trailing)
                 }
                 LabeledContent("Status") {
-                    Text(appState.backendStatus.environmentReady ? "Ready" : "Needs Setup")
+                    Text(appState.backendStatus.engineReady ? "Ready" : "Unavailable")
+                }
+                LabeledContent("Installed Models") {
+                    Text("\(appState.installedModelCount)")
+                }
+                if !appState.backendStatus.installedModelsAvailable {
+                    Text("No model is bundled with the app. Download the model you want in the Models tab before the first transcription.")
+                        .foregroundStyle(.secondary)
                 }
                 if let error = appState.backendStatus.errorMessage, !error.isEmpty {
                     Text(error)
                         .foregroundStyle(.secondary)
                 }
-                if !appState.backendSetupMessage.isEmpty {
-                    Text(appState.backendSetupMessage)
-                        .foregroundStyle(.secondary)
-                }
                 HStack {
-                    Button(appState.backendStatus.environmentReady ? "Repair Environment" : "Install Environment") {
-                        appState.setupBackendEnvironment()
+                    Button("Open Models Folder") {
+                        guard let modelStorePath = appState.backendStatus.modelStorePath else { return }
+                        NSWorkspace.shared.open(URL(fileURLWithPath: modelStorePath))
                     }
                     Button("Refresh Status") {
                         Task {
@@ -72,6 +78,9 @@ struct SettingsView: View {
                             Text(model.statusText)
                                 .font(.callout)
                                 .foregroundStyle(.secondary)
+                            Text(model.capabilitySummary)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                             if let localSizeBytes = model.localSizeBytes {
                                 Text(ByteCountFormatter.string(fromByteCount: localSizeBytes, countStyle: .file))
                                     .font(.caption)
@@ -91,13 +100,13 @@ struct SettingsView: View {
                             Button("Install") {
                                 appState.installModel(model.id)
                             }
-                            .disabled(!appState.backendStatus.environmentReady)
+                            .disabled(!appState.backendStatus.engineReady)
                         }
                     }
                     .padding(.vertical, 4)
                 }
             } footer: {
-                Text("Models are stored inside the app support folder managed by Whisper for Mac.")
+                Text("Models are downloaded on demand and stored in the app support folder managed by Whisper for Mac.")
             }
         }
     }
