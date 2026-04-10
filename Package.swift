@@ -38,7 +38,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "WhisperForMac",
-            dependencies: ["whisper"]
+            dependencies: ["whisper"],
+            exclude: [
+                "Resources/AppIcons",
+            ]
         ),
         .testTarget(
             name: "WhisperForMacTests",
