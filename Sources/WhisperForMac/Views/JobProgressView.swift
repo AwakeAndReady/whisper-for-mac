@@ -5,6 +5,11 @@ struct JobProgressSection: View {
     let onCancel: () -> Void
     let onRevealOutputs: () -> Void
 
+    @State private var displayedProgress = TranscriptionProgressDisplayState()
+
+    private let progressSmoother = TranscriptionProgressSmoother()
+    private let progressTimer = Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()
+
     var body: some View {
         GroupBox {
             VStack(alignment: .leading, spacing: 12) {
@@ -13,11 +18,11 @@ struct JobProgressSection: View {
                     Label("No active transcription", systemImage: "pause.circle")
                         .foregroundStyle(.secondary)
                 case .preparing:
-                    progressRow("Preparing backend", fraction: 0.08)
+                    progressRow("Preparing backend", fraction: displayedProgress.displayedFraction)
                 case let .running(text, fraction):
-                    progressRow(text, fraction: fraction)
+                    progressRow(text, fraction: displayedFraction(fallingBackTo: fraction))
                 case .writingOutputs:
-                    progressRow("Writing output files", fraction: 0.95)
+                    progressRow("Writing output files", fraction: displayedFraction(fallingBackTo: 0.95))
                 case .succeeded:
                     Label("Transcription finished successfully.", systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.green)
@@ -35,6 +40,16 @@ struct JobProgressSection: View {
         } label: {
             Text("Progress")
         }
+        .onAppear {
+            refreshDisplayedProgress(at: Date())
+        }
+        .onChange(of: state) { _, _ in
+            refreshDisplayedProgress(at: Date())
+        }
+        .onReceive(progressTimer) { now in
+            guard state.isBusy else { return }
+            refreshDisplayedProgress(at: now)
+        }
     }
 
     @ViewBuilder
@@ -43,10 +58,19 @@ struct JobProgressSection: View {
             Text(title)
             if let fraction {
                 SwiftUI.ProgressView(value: fraction, total: 1)
+                    .animation(.linear(duration: 0.12), value: fraction)
             } else {
                 SwiftUI.ProgressView()
                     .controlSize(.regular)
             }
         }
+    }
+
+    private func displayedFraction(fallingBackTo fallback: Double?) -> Double? {
+        displayedProgress.displayedFraction ?? fallback
+    }
+
+    private func refreshDisplayedProgress(at now: Date) {
+        displayedProgress = progressSmoother.updatedState(for: state, at: now, previous: displayedProgress)
     }
 }
