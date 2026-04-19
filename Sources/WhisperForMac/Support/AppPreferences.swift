@@ -12,8 +12,8 @@ struct AppPreferences {
 
     static let `default` = AppPreferences(
         outputFormats: [.txt, .vtt],
-        outputLocationMode: .nextToSource,
-        customOutputDirectory: nil
+        outputLocationMode: .custom,
+        customOutputDirectory: FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first
     )
 }
 
@@ -25,13 +25,14 @@ enum PreferencesStore {
     static func load() -> AppPreferences {
         let defaults = UserDefaults.standard
         let formats = Set((defaults.array(forKey: outputFormatsKey) as? [String] ?? ["txt", "vtt"]).compactMap(OutputFormat.init(rawValue:)))
-        let mode = OutputLocationMode(rawValue: defaults.string(forKey: outputLocationModeKey) ?? OutputLocationMode.nextToSource.rawValue) ?? .nextToSource
+        let defaultDesktop = AppPreferences.default.customOutputDirectory
+        let mode = OutputLocationMode(rawValue: defaults.string(forKey: outputLocationModeKey) ?? OutputLocationMode.custom.rawValue) ?? .custom
         let customURL = defaults.string(forKey: customOutputDirectoryKey).flatMap(URL.init(fileURLWithPath:))
 
         return AppPreferences(
             outputFormats: formats.isEmpty ? AppPreferences.default.outputFormats : formats,
-            outputLocationMode: mode,
-            customOutputDirectory: customURL
+            outputLocationMode: mode == .nextToSource ? .custom : mode,
+            customOutputDirectory: customURL ?? defaultDesktop
         )
     }
 

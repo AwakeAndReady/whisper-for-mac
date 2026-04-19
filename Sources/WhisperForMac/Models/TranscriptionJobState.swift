@@ -18,6 +18,15 @@ enum TranscriptionJobState: Equatable {
         }
     }
 
+    var isTerminal: Bool {
+        switch self {
+        case .succeeded, .failed:
+            return true
+        case .idle, .awaitingConfirmation, .preparing, .running, .writingOutputs:
+            return false
+        }
+    }
+
     var progressDescription: String {
         switch self {
         case .idle:

@@ -10,17 +10,19 @@ struct WhisperForMacApp: App {
         WindowGroup("Whisper for Mac") {
             MainView()
                 .environmentObject(appState)
-                .frame(minWidth: 820, minHeight: 700)
+                .frame(minWidth: 700, minHeight: 600)
                 .task {
                     await appState.initialize()
                 }
         }
-        .defaultSize(width: 920, height: 760)
-
-        Settings {
-            SettingsView()
-                .environmentObject(appState)
-                .frame(width: 700, height: 560)
+        .defaultSize(width: 780, height: 650)
+        .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings…") {
+                    appState.presentSettings(tab: .models)
+                }
+                .keyboardShortcut(",", modifiers: .command)
+            }
         }
     }
 }

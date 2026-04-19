@@ -1,30 +1,30 @@
 import AppKit
 import SwiftUI
 
-private enum SettingsTab: CaseIterable {
-    case engine
+enum SettingsTab: Int, CaseIterable {
     case models
     case output
+    case engine
 
     var title: String {
         switch self {
-        case .engine:
-            return "Engine"
         case .models:
             return "Models"
         case .output:
             return "Output"
+        case .engine:
+            return "Engine"
         }
     }
 
     var systemImageName: String {
         switch self {
-        case .engine:
-            return "server.rack"
         case .models:
             return "square.stack.3d.down.forward"
         case .output:
             return "folder"
+        case .engine:
+            return "server.rack"
         }
     }
 }
@@ -38,9 +38,9 @@ final class SettingsTabViewController: NSTabViewController {
         super.viewDidLoad()
         tabStyle = .toolbar
         preferredContentSize = NSSize(width: 700, height: 560)
-        addTabItem(for: .engine, controller: engineController)
         addTabItem(for: .models, controller: modelsController)
         addTabItem(for: .output, controller: outputController)
+        addTabItem(for: .engine, controller: engineController)
     }
 
     func update(appState: AppState) {
@@ -56,6 +56,11 @@ final class SettingsTabViewController: NSTabViewController {
             OutputSettingsPane()
                 .environmentObject(appState)
         )
+
+        if tabViewItems.indices.contains(appState.settingsTab.rawValue),
+           selectedTabViewItemIndex != appState.settingsTab.rawValue {
+            selectedTabViewItemIndex = appState.settingsTab.rawValue
+        }
     }
 
     private func addTabItem(for tab: SettingsTab, controller: NSHostingController<AnyView>) {
@@ -71,6 +76,7 @@ struct SettingsTabViewControllerRepresentable: NSViewControllerRepresentable {
 
     func makeNSViewController(context: Context) -> SettingsTabViewController {
         let controller = SettingsTabViewController()
+        controller.loadViewIfNeeded()
         controller.update(appState: appState)
         return controller
     }

@@ -3,11 +3,12 @@ import Testing
 @testable import WhisperForMac
 
 @Test
-func defaultsNextToSource() async throws {
+func defaultsToDesktop() async throws {
     let input = URL(fileURLWithPath: "/tmp/sample.mov")
     let resolved = OutputDirectoryResolver.resolve(for: input, preferences: .default)
+    let desktop = try #require(FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first)
 
-    #expect(resolved.path == "/tmp/Whisper Output")
+    #expect(resolved.path == desktop.path)
 }
 
 @Test

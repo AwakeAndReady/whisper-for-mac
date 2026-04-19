@@ -9,6 +9,10 @@ struct WhisperModelDescriptor: Identifiable, Equatable {
 }
 
 enum SupportedModels {
+    static let recommendedModelID = "base"
+    static let fastestModelID = "tiny"
+    static let bestQualityModelID = "large-v3"
+
     static let all: [WhisperModelDescriptor] = [
         descriptor("tiny", multilingual: true),
         descriptor("tiny.en", multilingual: false),

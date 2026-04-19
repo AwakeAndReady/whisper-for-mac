@@ -91,3 +91,55 @@ func sizeTextFallsBackToUnavailableWhenUnknown() {
 
     #expect(model.sizeText == "Unavailable")
 }
+
+@Test
+func firstRunMetadataHighlightsRecommendedAndFastestModels() {
+    let recommended = WhisperModelInfo(
+        id: SupportedModels.recommendedModelID,
+        displayName: "Base",
+        sourceURL: URL(string: "https://example.com/base.bin")!,
+        isInstalled: false,
+        installState: .notInstalled,
+        localSizeBytes: nil,
+        remoteSizeBytes: nil,
+        isMultilingual: true
+    )
+    let fastest = WhisperModelInfo(
+        id: SupportedModels.fastestModelID,
+        displayName: "Tiny",
+        sourceURL: URL(string: "https://example.com/tiny.bin")!,
+        isInstalled: false,
+        installState: .notInstalled,
+        localSizeBytes: nil,
+        remoteSizeBytes: nil,
+        isMultilingual: true
+    )
+    let bestQuality = WhisperModelInfo(
+        id: SupportedModels.bestQualityModelID,
+        displayName: "Large V3",
+        sourceURL: URL(string: "https://example.com/large-v3.bin")!,
+        isInstalled: false,
+        installState: .notInstalled,
+        localSizeBytes: nil,
+        remoteSizeBytes: nil,
+        isMultilingual: true
+    )
+    let turbo = WhisperModelInfo(
+        id: "large-v3-turbo",
+        displayName: "Large V3 Turbo",
+        sourceURL: URL(string: "https://example.com/large-v3-turbo.bin")!,
+        isInstalled: false,
+        installState: .notInstalled,
+        localSizeBytes: nil,
+        remoteSizeBytes: nil,
+        isMultilingual: true
+    )
+
+    #expect(recommended.highlightLabel == "Recommended")
+    #expect(recommended.usageSummary.contains("Balanced speed and accuracy"))
+    #expect(fastest.highlightLabel == "Fastest")
+    #expect(fastest.setupSummary.contains("Works across multiple languages"))
+    #expect(bestQuality.highlightLabel == "Best Quality")
+    #expect(turbo.highlightLabel == nil)
+    #expect(turbo.usageSummary.contains("faster transcription"))
+}

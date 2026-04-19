@@ -6,17 +6,17 @@ struct OutputSettingsPane: View {
 
     var body: some View {
         Form {
+            Section {
+                Text("Set the default file output options here.")
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Default Output") {
-                Picker("Folder Rule", selection: binding(for: \.outputLocationMode)) {
-                    Text("Next to source file").tag(OutputLocationMode.nextToSource)
-                    Text("Custom folder").tag(OutputLocationMode.custom)
+                LabeledContent("Default Folder") {
+                    Text(appState.preferences.customOutputDirectory?.path ?? "Desktop")
                 }
 
-                LabeledContent("Custom Folder") {
-                    Text(appState.preferences.customOutputDirectory?.path ?? "Not Set")
-                }
-
-                Button("Choose Custom Folder") {
+                Button("Choose Default Folder") {
                     let panel = NSOpenPanel()
                     panel.canChooseFiles = false
                     panel.canChooseDirectories = true
@@ -33,16 +33,6 @@ struct OutputSettingsPane: View {
         .formStyle(.grouped)
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    }
-
-    private func binding<Value>(for keyPath: WritableKeyPath<AppPreferences, Value>) -> Binding<Value> {
-        Binding(
-            get: { appState.preferences[keyPath: keyPath] },
-            set: { newValue in
-                appState.preferences[keyPath: keyPath] = newValue
-                appState.savePreferences()
-            }
-        )
     }
 
     private func outputBinding(for format: OutputFormat) -> Binding<Bool> {

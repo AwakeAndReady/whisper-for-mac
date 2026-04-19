@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct ModelsSettingsPane: View {
     @EnvironmentObject private var appState: AppState
@@ -6,15 +7,51 @@ struct ModelsSettingsPane: View {
     var body: some View {
         List {
             Section {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(alignment: .top, spacing: 16) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Advanced model management")
+                                .font(.headline)
+                            Text("Install or remove models here. Models are downloaded on demand from the official whisper.cpp Hugging Face repository.")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer()
+                        Button {
+                            guard let modelStorePath = appState.backendStatus.modelStorePath else { return }
+                            NSWorkspace.shared.open(URL(fileURLWithPath: modelStorePath))
+                        } label: {
+                            Label("Open Models Folder", systemImage: "folder")
+                        }
+                        .labelStyle(.titleAndIcon)
+                        .disabled(appState.backendStatus.modelStorePath == nil)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                }
+                .padding(.vertical, 4)
+            }
+
+            Section {
                 ForEach(appState.models) { model in
                     HStack(alignment: .center) {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(model.displayName)
-                                .font(.headline)
+                            HStack(spacing: 8) {
+                                Text(model.displayName)
+                                    .font(.headline)
+                                if let highlightLabel = model.highlightLabel {
+                                    Text(highlightLabel)
+                                        .font(.caption.weight(.semibold))
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color.accentColor.opacity(0.14), in: Capsule())
+                                        .foregroundStyle(Color.accentColor)
+                                }
+                            }
                             Text(model.statusText)
                                 .font(.callout)
                                 .foregroundStyle(.secondary)
-                            Text(model.capabilitySummary)
+                            Text(model.setupSummary)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                             HStack(spacing: 10) {
@@ -33,8 +70,6 @@ struct ModelsSettingsPane: View {
                     }
                     .padding(.vertical, 4)
                 }
-            } footer: {
-                Text("Models are downloaded on demand from the official whisper.cpp Hugging Face repository and stored locally in Whisper for Mac's Application Support folder.")
             }
         }
         .transaction { transaction in

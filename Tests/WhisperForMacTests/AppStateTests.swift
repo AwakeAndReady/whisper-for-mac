@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import WhisperForMac
 
@@ -28,4 +29,44 @@ func transientStatesPersistOnlyWhileUnderlyingFileStateMatches() {
 
     #expect(installing == .installing(progress: 0.4, bytesReceived: 40, totalBytes: 100))
     #expect(removing == .removing)
+}
+
+@MainActor
+@Test
+func homeStateFollowsSetupReadyAndCompletedFlow() {
+    let appState = AppState()
+
+    appState.backendStatus = BackendStatus(
+        engineReady: true,
+        engineVersion: "Embedded whisper.cpp engine",
+        modelStorePath: nil,
+        installedModelsAvailable: false,
+        errorMessage: nil
+    )
+    #expect(appState.homeState == .readyForFile)
+
+    appState.models = [
+        WhisperModelInfo(
+            id: SupportedModels.recommendedModelID,
+            displayName: "Base",
+            sourceURL: URL(string: "https://example.com/base.bin")!,
+            isInstalled: true,
+            installState: .installed,
+            localSizeBytes: 1_000,
+            remoteSizeBytes: nil,
+            isMultilingual: true
+        )
+    ]
+    appState.selectedModelID = SupportedModels.recommendedModelID
+    appState.backendStatus.installedModelsAvailable = true
+    appState.wizardStep = .file
+    #expect(appState.homeState == .readyForFile)
+
+    appState.selectedFileURL = URL(fileURLWithPath: "/tmp/example.wav")
+    appState.wizardStep = .options
+    #expect(appState.homeState == .readyToRun)
+
+    appState.jobState = .succeeded(outputURLs: [])
+    appState.wizardStep = .progress
+    #expect(appState.homeState == .completed)
 }

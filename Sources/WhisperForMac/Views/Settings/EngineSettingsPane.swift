@@ -6,6 +6,11 @@ struct EngineSettingsPane: View {
 
     var body: some View {
         Form {
+            Section {
+                Text("This pane is mainly for troubleshooting. If the engine and models are healthy, you can stay in the main window and start transcribing right away.")
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Engine") {
                 LabeledContent("Runtime") {
                     Text("Native whisper.cpp")

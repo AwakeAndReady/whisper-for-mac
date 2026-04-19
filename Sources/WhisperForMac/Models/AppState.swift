@@ -1,6 +1,48 @@
 import AppKit
 import Foundation
 
+enum HomeFlowState: Equatable {
+    case setup
+    case readyForFile
+    case readyToRun
+    case running
+    case completed
+    case error
+}
+
+enum WizardStep: Int, CaseIterable {
+    case file
+    case model
+    case options
+    case progress
+
+    var title: String {
+        switch self {
+        case .file:
+            return "Choose File"
+        case .model:
+            return "Install or Choose Model"
+        case .options:
+            return "Set Options"
+        case .progress:
+            return "Progress and Results"
+        }
+    }
+
+    var shortTitle: String {
+        switch self {
+        case .file:
+            return "File"
+        case .model:
+            return "Model"
+        case .options:
+            return "Set Options"
+        case .progress:
+            return "Progress"
+        }
+    }
+}
+
 @MainActor
 final class AppState: ObservableObject {
     @Published var backendStatus: BackendStatus = .unavailable
@@ -23,11 +65,12 @@ final class AppState: ObservableObject {
     @Published var jobState: TranscriptionJobState = .idle
     @Published var preferences: AppPreferences = PreferencesStore.load()
     @Published var showFileImporter = false
-    @Published var showConfirmationSheet = false
     @Published var showOutputFolderPicker = false
     @Published var backendSetupMessage = ""
     @Published var transientErrorMessage: String?
     @Published var lastOutputURLs: [URL] = []
+    @Published var settingsTab: SettingsTab = .engine
+    @Published var wizardStep: WizardStep = .file
 
     private let backend = WhisperBackendService()
 
@@ -37,6 +80,18 @@ final class AppState: ObservableObject {
 
     var selectedModelInfo: WhisperModelInfo? {
         models.first(where: { $0.id == selectedModelID })
+    }
+
+    var installedModels: [WhisperModelInfo] {
+        models.filter(\.isInstalled)
+    }
+
+    var recommendedModelInfo: WhisperModelInfo? {
+        models.first(where: { $0.id == SupportedModels.recommendedModelID }) ?? models.first
+    }
+
+    var selectedInstalledModelInfo: WhisperModelInfo? {
+        installedModels.first(where: { $0.id == selectedModelID })
     }
 
     var selectedFileError: String? {
@@ -59,6 +114,82 @@ final class AppState: ObservableObject {
 
     var installedModelCount: Int {
         models.filter(\.isInstalled).count
+    }
+
+    var preferredOutputURL: URL? {
+        lastOutputURLs.first(where: { $0.pathExtension.lowercased() == OutputFormat.txt.rawValue }) ?? lastOutputURLs.first
+    }
+
+    var canChooseFile: Bool {
+        backendStatus.engineReady && backendStatus.installedModelsAvailable && !jobState.isBusy
+    }
+
+    var canReviewOptions: Bool {
+        canChooseFile && selectedFileURL != nil && selectedFileError == nil
+    }
+
+    var homeState: HomeFlowState {
+        switch wizardStep {
+        case .file:
+            return .readyForFile
+        case .model:
+            return .setup
+        case .options:
+            return .readyToRun
+        case .progress:
+            if jobState.isBusy {
+                return .running
+            }
+            switch jobState {
+            case .succeeded:
+                return .completed
+            case .failed:
+                return .error
+            case .idle, .awaitingConfirmation, .preparing, .running, .writingOutputs:
+                return .running
+            }
+        }
+    }
+
+    var homeStateTitle: String {
+        switch homeState {
+        case .setup:
+            return "Set up Whisper"
+        case .readyForFile:
+            return "Choose a file"
+        case .readyToRun:
+            return "Review and start"
+        case .running:
+            return "Transcription in progress"
+        case .completed:
+            return "Transcript ready"
+        case .error:
+            return "Needs attention"
+        }
+    }
+
+    var homeStateDetail: String {
+        switch homeState {
+        case .setup:
+            return backendStatus.installedModelsAvailable ? "Choose the model you want to use for this transcript." : "Install a model once, then drag in a file and start."
+        case .readyForFile:
+            return "Your model is ready. Choose a local audio or video file to continue."
+        case .readyToRun:
+            return "Task, language, and output defaults are ready. Start when the summary looks right."
+        case .running:
+            return jobState.progressDescription
+        case .completed:
+            return "Your transcript files were written locally and are ready to open."
+        case .error:
+            return transientErrorMessage ?? jobState.progressDescription
+        }
+    }
+
+    var outputFormatsSummary: String {
+        preferences.outputFormats
+            .map(\.title)
+            .sorted()
+            .joined(separator: ", ")
     }
 
     var statusHeadline: String {
@@ -102,26 +233,50 @@ final class AppState: ObservableObject {
         backendStatus = snapshot.status
         preserveModelStates(with: snapshot.models)
         autoSelectInstalledModelIfNeeded()
+        syncWizardStepToCurrentState()
     }
 
     func chooseFile(_ url: URL) {
         guard let error = MediaFileValidator.validate(url) else {
+            resetResultIfNeeded()
             selectedFileURL = url
             transientErrorMessage = nil
-            jobState = .awaitingConfirmation
-            showConfirmationSheet = true
+            if !jobState.isBusy {
+                jobState = .idle
+            }
+            wizardStep = .model
             return
         }
 
         selectedFileURL = nil
+        lastOutputURLs = []
         transientErrorMessage = error
         jobState = .failed(message: error)
+        wizardStep = .file
     }
 
-    func showConfirmation() {
-        guard selectedFileURL != nil else { return }
-        showConfirmationSheet = true
-        jobState = .awaitingConfirmation
+    func chooseAnotherFile() {
+        resetForNextFileSelection()
+    }
+
+    func resetForNextFileSelection() {
+        selectedFileURL = nil
+        transientErrorMessage = nil
+        lastOutputURLs = []
+        if !jobState.isBusy {
+            jobState = .idle
+        }
+        wizardStep = backendStatus.installedModelsAvailable ? .file : .model
+    }
+
+    func openPreferredOutput() {
+        guard let preferredOutputURL else { return }
+        NSWorkspace.shared.open(preferredOutputURL)
+    }
+
+    func revealOutputsInFinder() {
+        guard !lastOutputURLs.isEmpty else { return }
+        NSWorkspace.shared.activateFileViewerSelecting(lastOutputURLs)
     }
 
     func runTranscription() {
@@ -139,9 +294,9 @@ final class AppState: ObservableObject {
             outputDirectoryURL: outputDirectory
         )
 
-        showConfirmationSheet = false
         jobState = .preparing
         transientErrorMessage = nil
+        wizardStep = .progress
 
         Task {
             do {
@@ -161,9 +316,11 @@ final class AppState: ObservableObject {
     func cancelTranscription() {
         backend.cancelCurrentWork()
         jobState = .failed(message: "The transcription was cancelled.")
+        wizardStep = .progress
     }
 
     func installModel(_ modelID: String) {
+        selectedModelID = modelID
         updateModel(modelID) {
             $0.installState = .installing(progress: nil, bytesReceived: nil, totalBytes: nil)
         }
@@ -219,6 +376,11 @@ final class AppState: ObservableObject {
         PreferencesStore.save(preferences)
     }
 
+    func presentSettings(tab: SettingsTab) {
+        settingsTab = tab
+        SettingsWindowManager.shared.show(tab: tab, appState: self)
+    }
+
     func setCustomOutputDirectory(_ url: URL) {
         preferences.customOutputDirectory = url
         preferences.outputLocationMode = .custom
@@ -261,6 +423,28 @@ final class AppState: ObservableObject {
         else { return }
 
         selectedModelID = fallback.id
+    }
+
+    private func syncWizardStepToCurrentState() {
+        if jobState.isBusy || jobState.isTerminal {
+            wizardStep = .progress
+        } else if selectedFileURL == nil {
+            wizardStep = .file
+        } else if !backendStatus.installedModelsAvailable {
+            wizardStep = .model
+        } else {
+            wizardStep = .options
+        }
+    }
+
+    private func resetResultIfNeeded() {
+        switch jobState {
+        case .succeeded, .failed:
+            lastOutputURLs = []
+            jobState = .idle
+        case .idle, .awaitingConfirmation, .preparing, .running, .writingOutputs:
+            break
+        }
     }
 
     private func updateModel(_ modelID: String, mutate: (inout WhisperModelInfo) -> Void) {
