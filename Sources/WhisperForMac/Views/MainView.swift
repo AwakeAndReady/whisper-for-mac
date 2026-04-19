@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 
 struct MainView: View {
+    @Environment(\.openSettings) private var openSettings
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
@@ -44,7 +45,7 @@ struct MainView: View {
                 }
 
                 Button("Settings") {
-                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                    openSettings()
                 }
             }
         }

@@ -6,6 +6,98 @@ struct BackendSnapshot {
     var models: [WhisperModelInfo]
 }
 
+private enum RemoteModelSize {
+    case known(Int64)
+    case unavailable
+}
+
+private final class ModelDownloadSession: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
+    typealias ProgressHandler = @Sendable (Double?, Int64, Int64?) -> Void
+
+    private var continuation: CheckedContinuation<(URL, URLResponse), Error>?
+    private var progressHandler: ProgressHandler?
+    private var downloadedFileURL: URL?
+    private var downloadError: Error?
+    private var session: URLSession?
+
+    func download(
+        from url: URL,
+        progressHandler: @escaping ProgressHandler
+    ) async throws -> (URL, URLResponse) {
+        self.progressHandler = progressHandler
+
+        let configuration = URLSessionConfiguration.ephemeral
+        let session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
+        self.session = session
+
+        return try await withCheckedThrowingContinuation { continuation in
+            self.continuation = continuation
+            session.downloadTask(with: url).resume()
+        }
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        downloadTask: URLSessionDownloadTask,
+        didWriteData bytesWritten: Int64,
+        totalBytesWritten: Int64,
+        totalBytesExpectedToWrite: Int64
+    ) {
+        let totalBytes = totalBytesExpectedToWrite > 0 ? totalBytesExpectedToWrite : nil
+        let progress = totalBytes.map { Double(totalBytesWritten) / Double($0) }
+        progressHandler?(progress, totalBytesWritten, totalBytes)
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        downloadTask: URLSessionDownloadTask,
+        didFinishDownloadingTo location: URL
+    ) {
+        let fileManager = FileManager.default
+        let stableURL = fileManager.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("bin")
+
+        do {
+            if fileManager.fileExists(atPath: stableURL.path) {
+                try fileManager.removeItem(at: stableURL)
+            }
+            try fileManager.moveItem(at: location, to: stableURL)
+            downloadedFileURL = stableURL
+        } catch {
+            downloadError = error
+        }
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        defer {
+            session.finishTasksAndInvalidate()
+            self.session = nil
+            continuation = nil
+            progressHandler = nil
+            downloadedFileURL = nil
+            downloadError = nil
+        }
+
+        if let error {
+            continuation?.resume(throwing: error)
+            return
+        }
+
+        if let downloadError {
+            continuation?.resume(throwing: downloadError)
+            return
+        }
+
+        guard let downloadedFileURL, let response = task.response else {
+            continuation?.resume(throwing: BackendServiceError.installFailed("The model download finished without a file."))
+            return
+        }
+
+        continuation?.resume(returning: (downloadedFileURL, response))
+    }
+}
+
 enum BackendServiceError: LocalizedError {
     case unknownModel
     case invalidModelSelection
@@ -33,11 +125,12 @@ final class WhisperBackendService {
     private let audioExtractor = AudioSampleExtractor()
     private let engine = WhisperEngine()
     private let transcriptWriter = WhisperTranscriptWriter()
+    private var remoteModelSizeCache: [String: RemoteModelSize] = [:]
 
     func refreshSnapshot() async -> BackendSnapshot {
         do {
             try ensureDirectories()
-            let models = installedModels()
+            let models = await installedModels()
             return BackendSnapshot(
                 status: BackendStatus(
                     engineReady: true,
@@ -57,12 +150,16 @@ final class WhisperBackendService {
                     installedModelsAvailable: false,
                     errorMessage: error.localizedDescription
                 ),
-                models: installedModels()
+                models: await installedModels()
             )
         }
     }
 
-    func installModel(_ modelID: String, update: @escaping @MainActor (String) -> Void) async throws {
+    func installModel(
+        _ modelID: String,
+        update: @escaping @MainActor (String) -> Void,
+        updateProgress: @escaping @MainActor (Double?, Int64, Int64?) -> Void
+    ) async throws {
         guard let descriptor = SupportedModels.descriptor(for: modelID) else {
             throw BackendServiceError.unknownModel
         }
@@ -70,13 +167,19 @@ final class WhisperBackendService {
         try ensureDirectories()
         update("Downloading \(descriptor.displayName)")
 
-        let (temporaryURL, response) = try await URLSession.shared.download(from: descriptor.downloadURL)
+        let downloader = ModelDownloadSession()
+        let (temporaryURL, response) = try await downloader.download(from: descriptor.downloadURL) { progress, bytesReceived, totalBytes in
+            Task { @MainActor in
+                updateProgress(progress, bytesReceived, totalBytes)
+            }
+        }
         if let httpResponse = response as? HTTPURLResponse, !(200 ..< 300).contains(httpResponse.statusCode) {
             throw BackendServiceError.installFailed("Downloading \(descriptor.displayName) failed with status \(httpResponse.statusCode).")
         }
 
         let destination = paths.modelsDirectory.appendingPathComponent(descriptor.filename)
         let fileManager = FileManager.default
+        try fileManager.createDirectory(at: paths.modelsDirectory, withIntermediateDirectories: true)
         if fileManager.fileExists(atPath: destination.path) {
             try fileManager.removeItem(at: destination)
         }
@@ -171,22 +274,84 @@ final class WhisperBackendService {
         try fileManager.createDirectory(at: paths.modelsDirectory, withIntermediateDirectories: true)
     }
 
-    private func installedModels() -> [WhisperModelInfo] {
-        SupportedModels.all.map { descriptor in
-            let modelURL = paths.modelsDirectory.appendingPathComponent(descriptor.filename)
-            let attributes = try? FileManager.default.attributesOfItem(atPath: modelURL.path)
-            let size = attributes?[.size] as? NSNumber
-            let isInstalled = FileManager.default.fileExists(atPath: modelURL.path)
+    private func installedModels() async -> [WhisperModelInfo] {
+        await withTaskGroup(of: (Int, WhisperModelInfo).self) { group in
+            for (index, descriptor) in SupportedModels.all.enumerated() {
+                group.addTask { [self] in
+                    let modelInfo = await installedModelInfo(for: descriptor)
+                    return (index, modelInfo)
+                }
+            }
 
-            return WhisperModelInfo(
-                id: descriptor.id,
-                displayName: descriptor.displayName,
-                isInstalled: isInstalled,
-                installState: isInstalled ? .installed : .notInstalled,
-                localSizeBytes: size?.int64Value,
-                isMultilingual: descriptor.isMultilingual
-            )
+            var orderedModels = Array<WhisperModelInfo?>(repeating: nil, count: SupportedModels.all.count)
+            for await (index, modelInfo) in group {
+                orderedModels[index] = modelInfo
+            }
+
+            return orderedModels.compactMap { $0 }
         }
+    }
+
+    private func installedModelInfo(for descriptor: WhisperModelDescriptor) async -> WhisperModelInfo {
+        let fileManager = FileManager.default
+        let modelURL = paths.modelsDirectory.appendingPathComponent(descriptor.filename)
+        let attributes = try? fileManager.attributesOfItem(atPath: modelURL.path)
+        let size = attributes?[.size] as? NSNumber
+        let isInstalled = fileManager.fileExists(atPath: modelURL.path)
+        let remoteSizeBytes = isInstalled ? nil : await remoteSize(for: descriptor)
+
+        return WhisperModelInfo(
+            id: descriptor.id,
+            displayName: descriptor.displayName,
+            sourceURL: descriptor.downloadURL,
+            isInstalled: isInstalled,
+            installState: isInstalled ? .installed : .notInstalled,
+            localSizeBytes: size?.int64Value,
+            remoteSizeBytes: remoteSizeBytes,
+            isMultilingual: descriptor.isMultilingual
+        )
+    }
+
+    private func remoteSize(for descriptor: WhisperModelDescriptor) async -> Int64? {
+        if let cached = remoteModelSizeCache[descriptor.id] {
+            switch cached {
+            case let .known(size):
+                return size
+            case .unavailable:
+                return nil
+            }
+        }
+
+        var request = URLRequest(url: descriptor.downloadURL)
+        request.httpMethod = "HEAD"
+        request.timeoutInterval = 15
+
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            let size = contentLength(from: response)
+            remoteModelSizeCache[descriptor.id] = size.map(RemoteModelSize.known) ?? .unavailable
+            return size
+        } catch {
+            remoteModelSizeCache[descriptor.id] = .unavailable
+            return nil
+        }
+    }
+
+    private func contentLength(from response: URLResponse) -> Int64? {
+        if response.expectedContentLength > 0 {
+            return response.expectedContentLength
+        }
+
+        guard
+            let httpResponse = response as? HTTPURLResponse,
+            let contentLength = httpResponse.value(forHTTPHeaderField: "Content-Length"),
+            let bytes = Int64(contentLength),
+            bytes > 0
+        else {
+            return nil
+        }
+
+        return bytes
     }
 
     private func transcribeOnce(

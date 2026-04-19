@@ -5,7 +5,16 @@ import Foundation
 final class AppState: ObservableObject {
     @Published var backendStatus: BackendStatus = .unavailable
     @Published var models: [WhisperModelInfo] = SupportedModels.all.map {
-        WhisperModelInfo(id: $0.id, displayName: $0.displayName, isInstalled: false, installState: .notInstalled, localSizeBytes: nil, isMultilingual: $0.isMultilingual)
+        WhisperModelInfo(
+            id: $0.id,
+            displayName: $0.displayName,
+            sourceURL: $0.downloadURL,
+            isInstalled: false,
+            installState: .notInstalled,
+            localSizeBytes: nil,
+            remoteSizeBytes: nil,
+            isMultilingual: $0.isMultilingual
+        )
     }
     @Published var selectedFileURL: URL?
     @Published var selectedModelID = SupportedModels.all.first?.id ?? "tiny"
@@ -156,14 +165,26 @@ final class AppState: ObservableObject {
 
     func installModel(_ modelID: String) {
         updateModel(modelID) {
-            $0.installState = .installing
+            $0.installState = .installing(progress: nil, bytesReceived: nil, totalBytes: nil)
         }
 
         Task {
             do {
-                try await backend.installModel(modelID) { [weak self] message in
-                    self?.backendSetupMessage = message
-                }
+                try await backend.installModel(
+                    modelID,
+                    update: { [weak self] message in
+                        self?.backendSetupMessage = message
+                    },
+                    updateProgress: { [weak self] progress, bytesReceived, totalBytes in
+                        self?.updateModel(modelID) {
+                            $0.installState = .installing(
+                                progress: progress,
+                                bytesReceived: bytesReceived,
+                                totalBytes: totalBytes
+                            )
+                        }
+                    }
+                )
                 await refreshBackendStatus()
             } catch {
                 updateModel(modelID) {
@@ -204,14 +225,31 @@ final class AppState: ObservableObject {
         savePreferences()
     }
 
+    nonisolated static func preservedInstallState(
+        current: WhisperModelInstallState?,
+        refreshedIsInstalled: Bool
+    ) -> WhisperModelInstallState? {
+        switch current {
+        case let .installing(progress, bytesReceived, totalBytes):
+            guard !refreshedIsInstalled else { return nil }
+            return .installing(progress: progress, bytesReceived: bytesReceived, totalBytes: totalBytes)
+        case .removing:
+            guard refreshedIsInstalled else { return nil }
+            return .removing
+        default:
+            return nil
+        }
+    }
+
     private func preserveModelStates(with refreshed: [WhisperModelInfo]) {
         let currentStates = Dictionary(uniqueKeysWithValues: models.map { ($0.id, $0.installState) })
         models = refreshed.map { info in
             var info = info
-            if case .installing = currentStates[info.id] {
-                info.installState = .installing
-            } else if case .removing = currentStates[info.id] {
-                info.installState = .removing
+            if let preservedState = Self.preservedInstallState(
+                current: currentStates[info.id],
+                refreshedIsInstalled: info.isInstalled
+            ) {
+                info.installState = preservedState
             }
             return info
         }

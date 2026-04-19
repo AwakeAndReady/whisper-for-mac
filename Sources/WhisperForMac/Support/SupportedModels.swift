@@ -21,6 +21,7 @@ enum SupportedModels {
         descriptor("large-v1", multilingual: true),
         descriptor("large-v2", multilingual: true),
         descriptor("large-v3", multilingual: true),
+        descriptor("large-v3-turbo", multilingual: true),
     ]
 
     static func displayName(for id: String) -> String {
