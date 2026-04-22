@@ -91,14 +91,14 @@ struct MainView: View {
     }
 
     private var contentPane: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(spacing: 0) {
             currentStepView
-                .frame(maxWidth: contentWidth, alignment: .topLeading)
+                .frame(width: contentWidth, alignment: .topLeading)
         }
         .padding(.horizontal, 22)
         .padding(.top, windowChromeHeight + 8)
-        .padding(.bottom, 14)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(.bottom, 18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(WizardChrome.cardBackground)
     }
 
@@ -134,6 +134,7 @@ struct MainView: View {
                 HStack(spacing: 12) {
                     Button("Back") { }
                         .buttonStyle(.borderless)
+                        .font(.system(size: 16))
                         .hidden()
 
                     Spacer()
@@ -142,6 +143,7 @@ struct MainView: View {
                         appState.wizardStep = .model
                     }
                     .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
                     .disabled(appState.selectedFileURL == nil)
                 }
             }
@@ -154,6 +156,7 @@ struct MainView: View {
                         appState.wizardStep = .file
                     }
                     .buttonStyle(.borderless)
+                    .font(.system(size: 16))
 
                     Spacer()
 
@@ -161,6 +164,7 @@ struct MainView: View {
                         appState.wizardStep = .language
                     }
                     .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
                     .disabled(!canConfigureOptions)
                 }
             }
@@ -176,6 +180,7 @@ struct MainView: View {
                         appState.wizardStep = .model
                     }
                     .buttonStyle(.borderless)
+                    .font(.system(size: 16))
 
                     Spacer()
 
@@ -183,6 +188,7 @@ struct MainView: View {
                         appState.wizardStep = .output
                     }
                     .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
                     .disabled(!canConfigureOptions)
                 }
             }
@@ -199,6 +205,7 @@ struct MainView: View {
                         appState.wizardStep = .language
                     }
                     .buttonStyle(.borderless)
+                    .font(.system(size: 16))
 
                     Spacer()
 
@@ -212,73 +219,98 @@ struct MainView: View {
             }
         case .progress:
             stepContainer {
-                JobProgressSection(
-                    onOpenModelSettings: { appState.presentSettings(tab: .models) }
-                )
-                .environmentObject(appState)
+                progressStepContent
             }
         }
     }
 
     private var modelStepContent: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            if let selectedInstalledModel = appState.selectedInstalledModelInfo {
-                dropdownField {
-                    Picker("Installed Model", selection: $appState.selectedModelID) {
-                        ForEach(appState.installedModels) { model in
-                            Text(model.displayName).tag(model.id)
+        optionsSection(
+            title: "Model",
+            detail: "Choose which installed Whisper model to use before starting."
+        ) {
+            VStack(alignment: .leading, spacing: 14) {
+                if let selectedInstalledModel = appState.selectedInstalledModelInfo {
+                    HStack(alignment: .center, spacing: 12) {
+                        Text("Model")
+                            .frame(width: 84, alignment: .leading)
+
+                        WhisperMenuField(title: selectedInstalledModel.displayName) {
+                            ForEach(appState.installedModels) { model in
+                                Button {
+                                    appState.selectedModelID = model.id
+                                } label: {
+                                    if model.id == appState.selectedModelID {
+                                        Label(model.displayName, systemImage: "checkmark")
+                                    } else {
+                                        Text(model.displayName)
+                                    }
+                                }
+                            }
                         }
                     }
-                }
 
-                modelHighlight(for: selectedInstalledModel)
+                    modelHighlight(for: selectedInstalledModel)
 
-                HStack {
-                    Button("More Models…") {
-                        appState.presentSettings(tab: .models)
+                    HStack {
+                        Button("More Models…") {
+                            appState.presentSettings(tab: .models)
+                        }
+                        .buttonStyle(.borderless)
+
+                        Spacer()
+
+                        Text("\(appState.installedModelCount) installed")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
                     }
-                    .buttonStyle(.borderless)
+                } else if let recommendedModel = appState.recommendedModelInfo {
+                    Text("First-run setup")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
 
-                    Spacer()
+                    modelHighlight(for: recommendedModel)
 
-                    Text("\(appState.installedModelCount) installed")
-                        .font(.footnote)
+                    if recommendedModel.installState.isInstalling {
+                        ProgressView(value: recommendedModel.installProgressFraction)
+                        Text(recommendedModel.installProgressAccessibilityText ?? "Downloading \(recommendedModel.displayName)…")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    } else if case let .failed(message) = recommendedModel.installState {
+                        Label(message, systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                    }
+
+                    HStack(spacing: 12) {
+                        Button("Install \(recommendedModel.displayName)") {
+                            appState.installModel(recommendedModel.id)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(!appState.backendStatus.engineReady || recommendedModel.installState.isInstalling)
+
+                        Button("More Models…") {
+                            appState.presentSettings(tab: .models)
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(!appState.backendStatus.engineReady)
+                    }
+                } else {
+                    Text("No Whisper models are currently available.")
                         .foregroundStyle(.secondary)
                 }
-            } else if let recommendedModel = appState.recommendedModelInfo {
-                Text("First-run setup")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
-
-                modelHighlight(for: recommendedModel)
-
-                if recommendedModel.installState.isInstalling {
-                    ProgressView(value: recommendedModel.installProgressFraction)
-                    Text(recommendedModel.installProgressAccessibilityText ?? "Downloading \(recommendedModel.displayName)…")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                } else if case let .failed(message) = recommendedModel.installState {
-                    Label(message, systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
-                }
-
-                HStack(spacing: 12) {
-                    Button("Install \(recommendedModel.displayName)") {
-                        appState.installModel(recommendedModel.id)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!appState.backendStatus.engineReady || recommendedModel.installState.isInstalling)
-
-                    Button("More Models…") {
-                        appState.presentSettings(tab: .models)
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(!appState.backendStatus.engineReady)
-                }
-            } else {
-                Text("No Whisper models are currently available.")
-                    .foregroundStyle(.secondary)
             }
+        }
+    }
+
+    private var progressStepContent: some View {
+        optionsSection(
+            title: "Progress",
+            detail: "Follow the current stage and review finished output files here."
+        ) {
+            JobProgressSection(
+                onOpenModelSettings: { appState.presentSettings(tab: .models) }
+            )
+            .environmentObject(appState)
         }
     }
 
@@ -304,7 +336,7 @@ struct MainView: View {
 
                 if let error = appState.transientErrorMessage {
                     Label(error, systemImage: "exclamationmark.triangle.fill")
-                        .font(.footnote)
+                        .font(.callout)
                         .foregroundStyle(.orange)
                 }
             }
@@ -315,13 +347,15 @@ struct MainView: View {
         @ViewBuilder content: () -> Content,
         @ViewBuilder footer: () -> Footer = { EmptyView() }
     ) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 0) {
             content()
 
+            Spacer(minLength: 0)
+
             footer()
-                .padding(.top, 2)
+                .padding(.top, 16)
         }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private func modelHighlight(for model: WhisperModelInfo) -> some View {
@@ -342,7 +376,7 @@ struct MainView: View {
                 Spacer()
 
                 Text(model.sizeText)
-                    .font(.caption)
+                    .font(.footnote)
                     .foregroundStyle(.secondary)
             }
 
@@ -388,7 +422,7 @@ struct MainView: View {
                     Text(appState.outputFormatsSummary)
                 }
             }
-            .font(.footnote)
+            .font(.callout)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .whisperSurface(
@@ -417,19 +451,6 @@ struct MainView: View {
             borderOpacity: 0.14,
             fillColor: WizardChrome.cardBackground
         )
-    }
-
-    private func dropdownField<Content: View>(
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        content()
-            .whisperSurface(
-                padding: 10,
-                cornerRadius: 12,
-                fillOpacity: 1,
-                borderOpacity: 0.12,
-                fillColor: WizardChrome.controlBackground
-            )
     }
 
     private func sidebarItem(_ step: WizardStep) -> some View {

@@ -46,22 +46,30 @@ struct LanguageOptionsView: View {
 
                 Divider()
 
-                Picker("Language", selection: $appState.selectedLanguageCode) {
-                    ForEach(LanguageCatalog.supported, id: \.code) { option in
-                        Text(option.name).tag(option.code)
+                HStack(alignment: .center, spacing: 12) {
+                    Text("Language")
+                        .frame(width: 84, alignment: .leading)
+
+                    WhisperMenuField(
+                        title: LanguageCatalog.displayName(for: appState.selectedLanguageCode),
+                        isEnabled: !appState.jobState.isBusy
+                    ) {
+                        ForEach(LanguageCatalog.supported, id: \.code) { option in
+                            Button {
+                                appState.selectedLanguageCode = option.code
+                            } label: {
+                                if option.code == appState.selectedLanguageCode {
+                                    Label(option.name, systemImage: "checkmark")
+                                } else {
+                                    Text(option.name)
+                                }
+                            }
+                        }
                     }
                 }
-                .whisperSurface(
-                    padding: 10,
-                    cornerRadius: 12,
-                    fillOpacity: 1,
-                    borderOpacity: 0.12,
-                    fillColor: WizardChrome.controlBackground
-                )
-                .disabled(appState.jobState.isBusy)
 
                 Text("Auto Detect is fine for most files. If a short clip comes back empty, choose the spoken language explicitly.")
-                    .font(.footnote)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
             }
         }
@@ -130,6 +138,7 @@ struct OutputOptionsView: View {
 
                 LabeledContent("Save Files To") {
                     Text(appState.resolvedOutputDirectory?.path ?? "Choose a file first")
+                        .font(.callout)
                         .multilineTextAlignment(.trailing)
                         .foregroundStyle(.secondary)
                 }
@@ -179,7 +188,7 @@ private func blockedState(
 }
 
 @MainActor
-private func optionsSection<Content: View>(
+func optionsSection<Content: View>(
     title: String,
     detail: String,
     @ViewBuilder content: () -> Content
