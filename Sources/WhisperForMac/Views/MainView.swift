@@ -3,41 +3,59 @@ import SwiftUI
 
 struct MainView: View {
     @EnvironmentObject private var appState: AppState
+    private let sidebarWidth: CGFloat = 190
+    private let contentWidth: CGFloat = 404
+    private let windowChromeHeight: CGFloat = 54
 
     var body: some View {
-        VStack {
-            VStack(alignment: .leading, spacing: 20) {
-                header
-                WizardStepIndicator(currentStep: appState.wizardStep)
-                currentStepView
-                Spacer(minLength: 0)
-            }
-            .padding(24)
-            .frame(maxWidth: contentMaxWidth, maxHeight: .infinity, alignment: .topLeading)
+        HStack(spacing: 0) {
+            sidebar
+
+            Divider()
+                .overlay(Color(nsColor: .separatorColor).opacity(0.18))
+
+            contentPane
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .overlay(WizardChrome.appBackground)
+        }
+        .overlay(alignment: .topLeading) {
+            sidebarBackground
+                .frame(width: sidebarWidth, height: windowChromeHeight)
+                .allowsHitTesting(false)
+        }
+        .overlay(alignment: .topLeading) {
+            topDividerExtension
+                .allowsHitTesting(false)
+        }
         .navigationTitle("Whisper for Mac")
+        .toolbar(removing: .title)
+        .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
+        .toolbarBackground(Color(nsColor: .windowBackgroundColor).opacity(0.96), for: .windowToolbar)
         .toolbar {
-            ToolbarItem {
-                Button {
-                    appState.presentSettings(tab: .models)
-                }
-                label: {
-                    Image(systemName: "gearshape")
-                }
-                .labelStyle(.iconOnly)
-                .help("Settings")
+            ToolbarItem(placement: .primaryAction) {
+                Spacer()
             }
 
-            ToolbarItem {
+            ToolbarItemGroup(placement: .automatic) {
+                Button {
+                    appState.presentSettings(tab: .models)
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 19, weight: .regular))
+                }
+                .help("Settings")
+
                 Button {
                     guard let url = URL(string: "https://github.com/AwakeAndReady/whisper-for-mac") else { return }
                     NSWorkspace.shared.open(url)
                 } label: {
                     Image(systemName: "questionmark.circle")
+                        .font(.system(size: 19, weight: .regular))
                 }
-                .labelStyle(.iconOnly)
                 .help("Help")
             }
         }
@@ -52,112 +70,157 @@ struct MainView: View {
         }
     }
 
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(WizardStep.allCases, id: \.rawValue) { step in
+                sidebarItem(step)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, windowChromeHeight + 8)
+        .padding(.bottom, 16)
+        .frame(width: sidebarWidth)
+        .frame(maxHeight: .infinity, alignment: .topLeading)
+        .background {
+            sidebarBackground
+        }
+    }
+
+    private var contentPane: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            currentStepView
+                .frame(maxWidth: contentWidth, alignment: .topLeading)
+        }
+        .padding(.horizontal, 22)
+        .padding(.top, windowChromeHeight + 8)
+        .padding(.bottom, 14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(WizardChrome.cardBackground)
+    }
+
+    private var sidebarBackground: some View {
+        SidebarMaterialView()
+            .overlay {
+                Rectangle()
+                    .fill(.regularMaterial)
+                    .opacity(0.22)
+            }
+            .overlay(WizardChrome.appBackground.opacity(0.20))
+    }
+
+    private var topDividerExtension: some View {
+        Rectangle()
+            .fill(Color(nsColor: .separatorColor).opacity(0.18))
+            .frame(width: 1, height: windowChromeHeight)
+            .offset(x: sidebarWidth)
+    }
+
     @ViewBuilder
     private var currentStepView: some View {
         switch appState.wizardStep {
         case .file:
-            stepContainer(
-                step: .file,
-                content: {
-                    fileStepContent
-                },
-                footer: {
-                    HStack {
-                        Spacer()
+            stepContainer {
+                fileStepContent
+            } footer: {
+                HStack(spacing: 12) {
+                    Button("Back") { }
+                        .buttonStyle(.borderless)
+                        .hidden()
 
-                        Button("Continue") {
-                            appState.wizardStep = .model
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(appState.selectedFileURL == nil)
+                    Spacer()
+
+                    Button("Continue") {
+                        appState.wizardStep = .model
                     }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(appState.selectedFileURL == nil)
                 }
-            )
+            }
         case .model:
-            stepContainer(
-                step: .model,
-                content: {
-                    modelStepContent
-                },
-                footer: {
-                    HStack {
-                        Button("Back") {
-                            appState.wizardStep = .file
-                        }
-
-                        Spacer()
-
-                        Button("Continue") {
-                            appState.wizardStep = .options
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(appState.selectedInstalledModelInfo == nil || appState.selectedFileURL == nil)
+            stepContainer {
+                modelStepContent
+            } footer: {
+                HStack(spacing: 12) {
+                    Button("Back") {
+                        appState.wizardStep = .file
                     }
-                }
-            )
-        case .options:
-            stepContainer(
-                step: .options,
-                content: {
-                    TranscriptionOptionsView(
-                        onOpenOutputSettings: { appState.presentSettings(tab: .output) },
-                        onOpenModelSettings: { appState.presentSettings(tab: .models) }
-                    )
-                    .environmentObject(appState)
-                },
-                footer: {
-                    HStack {
-                        Button("Back") {
-                            appState.wizardStep = .model
-                        }
+                    .buttonStyle(.borderless)
 
-                        Spacer()
+                    Spacer()
 
-                        Button(action: { appState.runTranscription() }) {
-                            Label("Start Transcription", systemImage: "play.fill")
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
-                        .disabled(!appState.canStartTranscription)
+                    Button("Continue") {
+                        appState.wizardStep = .language
                     }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!canConfigureOptions)
                 }
-            )
+            }
+        case .language:
+            stepContainer {
+                LanguageOptionsView(
+                    onOpenModelSettings: { appState.presentSettings(tab: .models) }
+                )
+                .environmentObject(appState)
+            } footer: {
+                HStack(spacing: 12) {
+                    Button("Back") {
+                        appState.wizardStep = .model
+                    }
+                    .buttonStyle(.borderless)
+
+                    Spacer()
+
+                    Button("Continue") {
+                        appState.wizardStep = .output
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!canConfigureOptions)
+                }
+            }
+        case .output:
+            stepContainer {
+                OutputOptionsView(
+                    onOpenOutputSettings: { appState.presentSettings(tab: .output) },
+                    onOpenModelSettings: { appState.presentSettings(tab: .models) }
+                )
+                .environmentObject(appState)
+            } footer: {
+                HStack(spacing: 12) {
+                    Button("Back") {
+                        appState.wizardStep = .language
+                    }
+                    .buttonStyle(.borderless)
+
+                    Spacer()
+
+                    Button(action: { appState.runTranscription() }) {
+                        Label("Start Transcription", systemImage: "play.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .disabled(!appState.canStartTranscription)
+                }
+            }
         case .progress:
-            stepContainer(
-                step: .progress,
-                content: {
-                    JobProgressSection(
-                        onOpenModelSettings: { appState.presentSettings(tab: .models) }
-                    )
-                    .environmentObject(appState)
-                }
-            )
-        }
-    }
-
-    private var header: some View {
-        HStack(alignment: .top, spacing: 20) {
-            Text("Local Whisper Transcription")
-                .font(.largeTitle.weight(.bold))
-            Spacer()
-        }
-    }
-
-    private var contentMaxWidth: CGFloat {
-        switch appState.wizardStep {
-        case .file, .model:
-            return 820
-        case .options, .progress:
-            return 980
+            stepContainer {
+                JobProgressSection(
+                    onOpenModelSettings: { appState.presentSettings(tab: .models) }
+                )
+                .environmentObject(appState)
+            }
         }
     }
 
     private var modelStepContent: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 14) {
             if let selectedInstalledModel = appState.selectedInstalledModelInfo {
-                Picker("Installed Model", selection: $appState.selectedModelID) {
-                    ForEach(appState.installedModels) { model in
-                        Text(model.displayName).tag(model.id)
+                dropdownField {
+                    Picker("Installed Model", selection: $appState.selectedModelID) {
+                        ForEach(appState.installedModels) { model in
+                            Text(model.displayName).tag(model.id)
+                        }
                     }
                 }
 
@@ -167,6 +230,7 @@ struct MainView: View {
                     Button("More Models…") {
                         appState.presentSettings(tab: .models)
                     }
+                    .buttonStyle(.borderless)
 
                     Spacer()
 
@@ -191,7 +255,7 @@ struct MainView: View {
                         .foregroundStyle(.orange)
                 }
 
-                HStack {
+                HStack(spacing: 12) {
                     Button("Install \(recommendedModel.displayName)") {
                         appState.installModel(recommendedModel.id)
                     }
@@ -201,6 +265,7 @@ struct MainView: View {
                     Button("More Models…") {
                         appState.presentSettings(tab: .models)
                     }
+                    .buttonStyle(.borderless)
                     .disabled(!appState.backendStatus.engineReady)
                 }
             } else {
@@ -211,7 +276,7 @@ struct MainView: View {
     }
 
     private var fileStepContent: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 14) {
             if !appState.backendStatus.installedModelsAvailable {
                 blockedStep(
                     title: "Install a model first",
@@ -223,6 +288,7 @@ struct MainView: View {
                 Button("Choose Another File") {
                     appState.chooseAnotherFile()
                 }
+                .buttonStyle(.borderless)
             } else {
                 DropZoneView(
                     onSelectFile: { appState.showFileImporter = true },
@@ -239,38 +305,20 @@ struct MainView: View {
     }
 
     private func stepContainer<Content: View, Footer: View>(
-        step: WizardStep,
         @ViewBuilder content: () -> Content,
         @ViewBuilder footer: () -> Footer = { EmptyView() }
     ) -> some View {
-        VStack(alignment: .leading, spacing: 20) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Step \(step.rawValue + 1)")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-
-                Text(step.title)
-                    .font(.title2.weight(.semibold))
-            }
-
+        VStack(alignment: .leading, spacing: 16) {
             content()
 
             footer()
+                .padding(.top, 2)
         }
-        .padding(24)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(.regularMaterial)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .strokeBorder(.white.opacity(0.18))
-        )
     }
 
     private func modelHighlight(for model: WhisperModelInfo) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .center, spacing: 10) {
                 Text(model.displayName)
                     .font(.headline)
@@ -280,7 +328,7 @@ struct MainView: View {
                         .font(.caption.weight(.semibold))
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
-                        .background(Color.accentColor.opacity(0.14), in: Capsule())
+                        .background(Color.accentColor.opacity(0.10), in: Capsule())
                         .foregroundStyle(Color.accentColor)
                 }
 
@@ -296,10 +344,14 @@ struct MainView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.accentColor.opacity(0.08))
+        .whisperSurface(
+            padding: 14,
+            cornerRadius: WizardChrome.sectionCornerRadius,
+            fillOpacity: 1,
+            borderOpacity: 0.14,
+            fillColor: WizardChrome.cardBackground,
+            tint: .accentColor,
+            tintOpacity: 0.03
         )
     }
 
@@ -332,10 +384,12 @@ struct MainView: View {
             .font(.footnote)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(.quaternary.opacity(0.35))
+        .whisperSurface(
+            padding: 14,
+            cornerRadius: WizardChrome.sectionCornerRadius,
+            fillOpacity: 1,
+            borderOpacity: 0.14,
+            fillColor: WizardChrome.cardBackground
         )
     }
 
@@ -349,36 +403,63 @@ struct MainView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(.quaternary.opacity(0.35))
+        .whisperSurface(
+            padding: 14,
+            cornerRadius: WizardChrome.sectionCornerRadius,
+            fillOpacity: 1,
+            borderOpacity: 0.14,
+            fillColor: WizardChrome.cardBackground
         )
     }
 
-}
+    private func dropdownField<Content: View>(
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        content()
+            .whisperSurface(
+                padding: 10,
+                cornerRadius: 12,
+                fillOpacity: 1,
+                borderOpacity: 0.12,
+                fillColor: WizardChrome.controlBackground
+            )
+    }
 
-private struct WizardStepIndicator: View {
-    let currentStep: WizardStep
-
-    var body: some View {
-        HStack(spacing: 12) {
-            ForEach(WizardStep.allCases, id: \.rawValue) { step in
-                HStack(spacing: 8) {
-                    Text("\(step.rawValue + 1)")
-                        .font(.caption.weight(.semibold))
-                        .frame(width: 22, height: 22)
-                        .background(step == currentStep ? Color.accentColor : Color.secondary.opacity(0.14), in: Circle())
-                        .foregroundStyle(step == currentStep ? Color.white : Color.secondary)
-
-                    Text(step.shortTitle)
-                        .font(.subheadline.weight(step == currentStep ? .semibold : .regular))
-                        .foregroundStyle(step == currentStep ? Color.primary : .secondary)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .background(step == currentStep ? Color.accentColor.opacity(0.10) : Color.clear, in: Capsule())
+    private func sidebarItem(_ step: WizardStep) -> some View {
+        Button {
+            guard canAccess(step) else { return }
+            appState.wizardStep = step
+        } label: {
+            HStack(spacing: 8) {
+                Text(step.shortTitle)
+                    .font(.system(size: 15, weight: step == appState.wizardStep ? .semibold : .regular))
+                Spacer()
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(step == appState.wizardStep ? Color.primary.opacity(0.10) : Color.clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .foregroundStyle(canAccess(step) ? (step == appState.wizardStep ? Color.primary : .primary) : .secondary)
+            .opacity(canAccess(step) ? 1 : 0.46)
+        }
+        .buttonStyle(.plain)
+        .disabled(!canAccess(step))
+    }
+
+    private var canConfigureOptions: Bool {
+        appState.selectedFileURL != nil && appState.selectedInstalledModelInfo != nil
+    }
+
+    private func canAccess(_ step: WizardStep) -> Bool {
+        switch step {
+        case .file:
+            return true
+        case .model:
+            return true
+        case .language, .output:
+            return canConfigureOptions
+        case .progress:
+            return appState.jobState.isBusy || appState.jobState.isTerminal
         }
     }
 }

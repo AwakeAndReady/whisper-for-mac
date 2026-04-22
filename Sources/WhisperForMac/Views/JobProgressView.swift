@@ -31,7 +31,7 @@ struct JobProgressSection: View {
     private let progressTimer = Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 14) {
             stageStrip
 
             switch appState.jobState {
@@ -70,18 +70,23 @@ struct JobProgressSection: View {
     }
 
     private var stageStrip: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             ForEach(ProgressStage.allCases, id: \.title) { stage in
                 HStack(spacing: 8) {
                     Image(systemName: symbolName(for: stage))
+                        .font(.subheadline)
                         .foregroundStyle(color(for: stage))
                     Text(stage.title)
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(color(for: stage))
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(color(for: stage).opacity(0.10), in: Capsule())
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(stageBackground(for: stage), in: Capsule())
+                .overlay {
+                    Capsule()
+                        .strokeBorder(stageBorder(for: stage), lineWidth: 1)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -97,10 +102,12 @@ struct JobProgressSection: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(.quaternary.opacity(0.35))
+        .whisperSurface(
+            padding: 14,
+            cornerRadius: WizardChrome.sectionCornerRadius,
+            fillOpacity: 0.66,
+            borderOpacity: 0.14,
+            fillColor: WizardChrome.cardBackground
         )
     }
 
@@ -126,10 +133,12 @@ struct JobProgressSection: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(.quaternary.opacity(0.35))
+        .whisperSurface(
+            padding: 14,
+            cornerRadius: WizardChrome.sectionCornerRadius,
+            fillOpacity: 0.66,
+            borderOpacity: 0.14,
+            fillColor: WizardChrome.cardBackground
         )
     }
 
@@ -175,10 +184,14 @@ struct JobProgressSection: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color(nsColor: .systemGreen).opacity(0.035))
+        .whisperSurface(
+            padding: 14,
+            cornerRadius: WizardChrome.sectionCornerRadius,
+            fillOpacity: 0.66,
+            borderOpacity: 0.14,
+            fillColor: WizardChrome.cardBackground,
+            tint: Color(nsColor: .systemGreen),
+            tintOpacity: 0.035
         )
     }
 
@@ -199,28 +212,40 @@ struct JobProgressSection: View {
                         appState.runTranscription()
                     }
                     .buttonStyle(.borderedProminent)
+
+                    if appState.selectedFileURL != nil {
+                        Button("Choose Another File") {
+                            appState.chooseAnotherFile()
+                        }
+                        .buttonStyle(.borderless)
+                    }
                 } else if appState.installedModelCount == 0 {
                     Button("Manage Models", action: onOpenModelSettings)
                         .buttonStyle(.borderedProminent)
+
+                    if appState.selectedFileURL != nil {
+                        Button("Choose Another File") {
+                            appState.chooseAnotherFile()
+                        }
+                        .buttonStyle(.borderless)
+                    }
                 } else {
                     Button("Choose Another File") {
                         appState.chooseAnotherFile()
                     }
                     .buttonStyle(.borderedProminent)
                 }
-
-                if appState.selectedFileURL != nil {
-                    Button("Choose Another File") {
-                        appState.chooseAnotherFile()
-                    }
-                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.orange.opacity(0.08))
+        .whisperSurface(
+            padding: 14,
+            cornerRadius: WizardChrome.sectionCornerRadius,
+            fillOpacity: 0.66,
+            borderOpacity: 0.14,
+            fillColor: WizardChrome.cardBackground,
+            tint: .orange,
+            tintOpacity: 0.04
         )
     }
 
@@ -243,6 +268,28 @@ struct JobProgressSection: View {
             return .accentColor
         case .pending:
             return .secondary
+        }
+    }
+
+    private func stageBackground(for stage: ProgressStage) -> Color {
+        switch stageStatus(for: stage) {
+        case .done:
+            return Color(nsColor: .systemGreen).opacity(0.07)
+        case .active:
+            return Color.accentColor.opacity(0.08)
+        case .pending:
+            return Color.secondary.opacity(0.05)
+        }
+    }
+
+    private func stageBorder(for stage: ProgressStage) -> Color {
+        switch stageStatus(for: stage) {
+        case .done:
+            return Color(nsColor: .systemGreen).opacity(0.16)
+        case .active:
+            return Color.accentColor.opacity(0.18)
+        case .pending:
+            return Color(nsColor: .separatorColor).opacity(0.16)
         }
     }
 

@@ -5,17 +5,23 @@ import SwiftUI
 struct WhisperForMacApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var appState = AppState()
+    private let fixedWindowSize = CGSize(width: 680, height: 404)
+    private let titlebarHeight: CGFloat = 54
 
     var body: some Scene {
         WindowGroup("Whisper for Mac") {
             MainView()
                 .environmentObject(appState)
-                .frame(minWidth: 700, minHeight: 600)
+                .frame(width: fixedWindowSize.width, height: fixedWindowSize.height)
+                .background {
+                    FixedWindowConfigurator(contentSize: fixedWindowSize, titlebarHeight: titlebarHeight)
+                }
                 .task {
                     await appState.initialize()
                 }
         }
-        .defaultSize(width: 780, height: 650)
+        .defaultSize(width: fixedWindowSize.width, height: fixedWindowSize.height)
+        .windowResizability(.contentSize)
         .commands {
             CommandGroup(replacing: .appSettings) {
                 Button("Settings…") {

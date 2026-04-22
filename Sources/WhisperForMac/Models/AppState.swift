@@ -13,7 +13,8 @@ enum HomeFlowState: Equatable {
 enum WizardStep: Int, CaseIterable {
     case file
     case model
-    case options
+    case language
+    case output
     case progress
 
     var title: String {
@@ -22,8 +23,10 @@ enum WizardStep: Int, CaseIterable {
             return "Choose File"
         case .model:
             return "Install or Choose Model"
-        case .options:
-            return "Set Options"
+        case .language:
+            return "Language"
+        case .output:
+            return "Output"
         case .progress:
             return "Progress and Results"
         }
@@ -35,8 +38,10 @@ enum WizardStep: Int, CaseIterable {
             return "File"
         case .model:
             return "Model"
-        case .options:
-            return "Set Options"
+        case .language:
+            return "Language"
+        case .output:
+            return "Output"
         case .progress:
             return "Progress"
         }
@@ -134,7 +139,7 @@ final class AppState: ObservableObject {
             return .readyForFile
         case .model:
             return .setup
-        case .options:
+        case .language, .output:
             return .readyToRun
         case .progress:
             if jobState.isBusy {
@@ -282,7 +287,7 @@ final class AppState: ObservableObject {
     func runTranscription() {
         guard
             let selectedFileURL,
-            let outputDirectory = resolvedOutputDirectory
+            let outputAccess = ensureOutputDirectoryAccess(promptIfNeeded: true, showCancellationError: true)
         else { return }
 
         let configuration = WhisperJobConfiguration(
@@ -291,14 +296,14 @@ final class AppState: ObservableObject {
             task: selectedTask,
             languageMode: selectedLanguageMode,
             outputFormats: preferences.outputFormats,
-            outputDirectoryURL: outputDirectory
+            outputDirectoryURL: outputAccess.url
         )
 
         jobState = .preparing
         transientErrorMessage = nil
         wizardStep = .progress
 
-        Task {
+        Task { [outputAccess] in
             do {
                 let outputURLs = try await backend.transcribe(configuration: configuration) { [weak self] state in
                     self?.jobState = state
@@ -310,6 +315,7 @@ final class AppState: ObservableObject {
                 transientErrorMessage = error.localizedDescription
                 jobState = .failed(message: error.localizedDescription)
             }
+            outputAccess.invalidate()
         }
     }
 
@@ -383,8 +389,49 @@ final class AppState: ObservableObject {
 
     func setCustomOutputDirectory(_ url: URL) {
         preferences.customOutputDirectory = url
+        preferences.customOutputDirectoryBookmark = try? OutputDirectoryAccess.makeBookmark(for: url)
         preferences.outputLocationMode = .custom
         savePreferences()
+    }
+
+    @discardableResult
+    private func ensureOutputDirectoryAccess(
+        promptIfNeeded: Bool,
+        showCancellationError: Bool
+    ) -> OutputDirectoryAccessSession? {
+        let fallbackDirectory = preferences.customOutputDirectory
+            ?? FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first
+
+        if let bookmark = preferences.customOutputDirectoryBookmark,
+           let resolved = try? OutputDirectoryAccess.resolveBookmark(bookmark) {
+            if resolved.isStale, let refreshedBookmark = try? OutputDirectoryAccess.makeBookmark(for: resolved.url) {
+                preferences.customOutputDirectory = resolved.url
+                preferences.customOutputDirectoryBookmark = refreshedBookmark
+                savePreferences()
+            }
+
+            return OutputDirectoryAccess.beginAccessing(url: resolved.url, usesSecurityScope: true)
+        }
+
+        guard promptIfNeeded else {
+            return fallbackDirectory.map { OutputDirectoryAccess.beginAccessing(url: $0, usesSecurityScope: false) }
+        }
+
+        guard let grantedDirectory = OutputDirectoryAccess.requestDirectoryAccess(initialDirectory: fallbackDirectory) else {
+            if showCancellationError {
+                transientErrorMessage = "Choose an output folder before starting transcription."
+            }
+            return nil
+        }
+
+        setCustomOutputDirectory(grantedDirectory)
+
+        if let bookmark = preferences.customOutputDirectoryBookmark,
+           let resolved = try? OutputDirectoryAccess.resolveBookmark(bookmark) {
+            return OutputDirectoryAccess.beginAccessing(url: resolved.url, usesSecurityScope: true)
+        }
+
+        return OutputDirectoryAccess.beginAccessing(url: grantedDirectory, usesSecurityScope: false)
     }
 
     nonisolated static func preservedInstallState(
@@ -433,7 +480,7 @@ final class AppState: ObservableObject {
         } else if !backendStatus.installedModelsAvailable {
             wizardStep = .model
         } else {
-            wizardStep = .options
+            wizardStep = .language
         }
     }
 

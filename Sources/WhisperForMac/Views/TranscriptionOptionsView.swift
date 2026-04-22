@@ -1,49 +1,104 @@
 import SwiftUI
 
-struct TranscriptionOptionsView: View {
+struct LanguageOptionsView: View {
+    @EnvironmentObject private var appState: AppState
+
+    let onOpenModelSettings: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if !appState.backendStatus.installedModelsAvailable {
+                blockedState(
+                    title: "Install a model to unlock language settings.",
+                    detail: "The recommended Base model is enough to get started. More models stay available in Settings when you need them."
+                )
+            } else if appState.selectedFileURL == nil {
+                blockedState(
+                    title: "Choose a file to review language settings.",
+                    detail: "Task and language controls are ready once a recording is selected."
+                )
+            } else if appState.selectedInstalledModelInfo == nil {
+                blockedState(
+                    title: "Choose an installed model before continuing.",
+                    detail: "Open model management to install or switch to a locally available model.",
+                    actionTitle: "More Models…",
+                    action: onOpenModelSettings
+                )
+            } else {
+                languageSection
+            }
+        }
+    }
+
+    private var languageSection: some View {
+        optionsSection(
+            title: "Language",
+            detail: "Choose the task and spoken language before starting."
+        ) {
+            VStack(alignment: .leading, spacing: 14) {
+                Picker("Task", selection: $appState.selectedTask) {
+                    ForEach(WhisperTask.allCases) { task in
+                        Text(task.title).tag(task)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .disabled(appState.jobState.isBusy)
+
+                Divider()
+
+                Picker("Language", selection: $appState.selectedLanguageCode) {
+                    ForEach(LanguageCatalog.supported, id: \.code) { option in
+                        Text(option.name).tag(option.code)
+                    }
+                }
+                .whisperSurface(
+                    padding: 10,
+                    cornerRadius: 12,
+                    fillOpacity: 1,
+                    borderOpacity: 0.12,
+                    fillColor: WizardChrome.controlBackground
+                )
+                .disabled(appState.jobState.isBusy)
+
+                Text("Auto Detect is fine for most files. If a short clip comes back empty, choose the spoken language explicitly.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+struct OutputOptionsView: View {
     @EnvironmentObject private var appState: AppState
 
     let onOpenOutputSettings: () -> Void
     let onOpenModelSettings: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 14) {
             if !appState.backendStatus.installedModelsAvailable {
                 blockedState(
-                    title: "Install a model to unlock transcription settings.",
-                    detail: "The recommended Base model is enough to get started. More models stay available in Settings when you need them."
+                    title: "Install a model to unlock output settings.",
+                    detail: "Once a model is ready, transcript and subtitle defaults can be adjusted here.",
+                    actionTitle: "More Models…",
+                    action: onOpenModelSettings
                 )
             } else if appState.selectedFileURL == nil {
                 blockedState(
-                    title: "Choose a file to review the final settings.",
-                    detail: "Task, language, and output defaults are ready as soon as a recording is selected."
+                    title: "Choose a file to review output settings.",
+                    detail: "Output formats and folders are ready as soon as a recording is selected."
                 )
-            } else if let selectedModel = appState.selectedInstalledModelInfo {
-                horizontalOptionsLayout(selectedModel: selectedModel)
-            } else {
+            } else if appState.selectedInstalledModelInfo == nil {
                 blockedState(
-                    title: "Choose an installed model before starting.",
-                    detail: "Open model management to install or switch to a locally available model."
+                    title: "Choose an installed model before continuing.",
+                    detail: "Open model management to install or switch to a locally available model.",
+                    actionTitle: "More Models…",
+                    action: onOpenModelSettings
                 )
+            } else {
+                outputSection
             }
         }
-    }
-
-    private func blockedState(title: String, detail: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.headline)
-            Text(detail)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(.quaternary.opacity(0.35))
-        )
     }
 
     private func binding(for format: OutputFormat) -> Binding<Bool> {
@@ -62,67 +117,16 @@ struct TranscriptionOptionsView: View {
         )
     }
 
-    private func horizontalOptionsLayout(selectedModel: WhisperModelInfo) -> some View {
-        HStack(alignment: .top, spacing: 18) {
-            coreOptionsGroup(selectedModel: selectedModel)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-
-            Divider()
-
-            advancedOutputGroup
-                .frame(width: 320, alignment: .topLeading)
-        }
-    }
-
-    private func coreOptionsGroup(selectedModel: WhisperModelInfo) -> some View {
-        GroupBox("Core Options") {
-            VStack(alignment: .leading, spacing: 14) {
-                LabeledContent("Model") {
-                    VStack(alignment: .trailing, spacing: 4) {
-                        HStack(spacing: 8) {
-                            Text(selectedModel.displayName)
-                            if let highlightLabel = selectedModel.highlightLabel {
-                                Text(highlightLabel)
-                                    .font(.caption.weight(.semibold))
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(Color.accentColor.opacity(0.14), in: Capsule())
-                                    .foregroundStyle(Color.accentColor)
-                            }
-                        }
-                        Text(selectedModel.usageSummary)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                Picker("Task", selection: $appState.selectedTask) {
-                    ForEach(WhisperTask.allCases) { task in
-                        Text(task.title).tag(task)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .disabled(appState.jobState.isBusy)
-
-                Picker("Language", selection: $appState.selectedLanguageCode) {
-                    ForEach(LanguageCatalog.supported, id: \.code) { option in
-                        Text(option.name).tag(option.code)
-                    }
-                }
-                .disabled(appState.jobState.isBusy)
-
-                Text("Auto Detect is fine for most files. If a short clip comes back empty, choose the spoken language explicitly.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private var advancedOutputGroup: some View {
-        GroupBox("Advanced Output Defaults") {
+    private var outputSection: some View {
+        optionsSection(
+            title: "Output",
+            detail: "Choose which files Whisper writes and where they should be saved."
+        ) {
             VStack(alignment: .leading, spacing: 12) {
                 Toggle("TXT transcript", isOn: binding(for: .txt))
                 Toggle("VTT subtitles", isOn: binding(for: .vtt))
+
+                Divider()
 
                 LabeledContent("Save Files To") {
                     Text(appState.resolvedOutputDirectory?.path ?? "Choose a file first")
@@ -130,12 +134,77 @@ struct TranscriptionOptionsView: View {
                         .foregroundStyle(.secondary)
                 }
 
+                Divider()
+
                 HStack {
                     Button("Default Folder…", action: onOpenOutputSettings)
+                        .buttonStyle(.borderless)
                     Button("More Models…", action: onOpenModelSettings)
+                        .buttonStyle(.borderless)
                 }
             }
         }
         .disabled(appState.jobState.isBusy)
     }
+}
+
+@MainActor
+private func blockedState(
+    title: String,
+    detail: String,
+    actionTitle: String? = nil,
+    action: (() -> Void)? = nil
+) -> some View {
+    VStack(alignment: .leading, spacing: 10) {
+        Text(title)
+            .font(.headline)
+        Text(detail)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+
+        if let actionTitle, let action {
+            Button(actionTitle, action: action)
+                .buttonStyle(.borderless)
+        }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .whisperSurface(
+        padding: 14,
+        cornerRadius: WizardChrome.sectionCornerRadius,
+        fillOpacity: 1,
+        borderOpacity: 0.14,
+        fillColor: WizardChrome.cardBackground
+    )
+}
+
+@MainActor
+private func optionsSection<Content: View>(
+    title: String,
+    detail: String,
+    @ViewBuilder content: () -> Content
+) -> some View {
+    VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.headline)
+
+            Text(detail)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+
+        Divider()
+
+        content()
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .whisperSurface(
+        padding: 16,
+        cornerRadius: WizardChrome.sectionCornerRadius,
+        fillOpacity: 1,
+        borderOpacity: 0.14,
+        fillColor: WizardChrome.cardBackground
+    )
 }
