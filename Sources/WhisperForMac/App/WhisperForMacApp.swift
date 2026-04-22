@@ -5,16 +5,21 @@ import SwiftUI
 struct WhisperForMacApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var appState = AppState()
+    @State private var isWindowActive = true
     private let fixedWindowSize = CGSize(width: 680, height: 404)
     private let titlebarHeight: CGFloat = 54
 
     var body: some Scene {
         WindowGroup("Whisper for Mac") {
-            MainView()
+            MainView(isWindowActive: isWindowActive)
                 .environmentObject(appState)
                 .frame(width: fixedWindowSize.width, height: fixedWindowSize.height)
                 .background {
-                    FixedWindowConfigurator(contentSize: fixedWindowSize, titlebarHeight: titlebarHeight)
+                    FixedWindowConfigurator(
+                        contentSize: fixedWindowSize,
+                        titlebarHeight: titlebarHeight,
+                        isWindowActive: $isWindowActive
+                    )
                 }
                 .task {
                     await appState.initialize()

@@ -3,6 +3,8 @@ import SwiftUI
 
 struct MainView: View {
     @EnvironmentObject private var appState: AppState
+    let isWindowActive: Bool
+
     private let sidebarWidth: CGFloat = 190
     private let contentWidth: CGFloat = 404
     private let windowChromeHeight: CGFloat = 54
@@ -34,7 +36,7 @@ struct MainView: View {
         .navigationTitle("Whisper for Mac")
         .toolbar(removing: .title)
         .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
-        .toolbarBackground(Color(nsColor: .windowBackgroundColor).opacity(0.96), for: .windowToolbar)
+        .toolbarBackground(toolbarBackgroundColor, for: .windowToolbar)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Spacer()
@@ -101,13 +103,14 @@ struct MainView: View {
     }
 
     private var sidebarBackground: some View {
-        SidebarMaterialView()
-            .overlay {
-                Rectangle()
-                    .fill(.regularMaterial)
-                    .opacity(0.22)
+        Group {
+            if isWindowActive {
+                SidebarMaterialView()
+                    .overlay(WizardChrome.activeSidebarTint.opacity(0.18))
+            } else {
+                WizardChrome.inactiveChrome
             }
-            .overlay(WizardChrome.appBackground.opacity(0.20))
+        }
     }
 
     private var topDividerExtension: some View {
@@ -115,6 +118,10 @@ struct MainView: View {
             .fill(Color(nsColor: .separatorColor).opacity(0.18))
             .frame(width: 1, height: windowChromeHeight)
             .offset(x: sidebarWidth)
+    }
+
+    private var toolbarBackgroundColor: Color {
+        isWindowActive ? WizardChrome.activeToolbarChrome : WizardChrome.inactiveChrome
     }
 
     @ViewBuilder
@@ -430,18 +437,27 @@ struct MainView: View {
             guard canAccess(step) else { return }
             appState.wizardStep = step
         } label: {
-            HStack(spacing: 8) {
-                Text(step.shortTitle)
-                    .font(.system(size: 15, weight: step == appState.wizardStep ? .semibold : .regular))
-                Spacer()
+            HStack(spacing: 0) {
+                HStack(spacing: 8) {
+                    Text(step.shortTitle)
+                        .font(.system(size: 15, weight: step == appState.wizardStep ? .semibold : .regular))
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(step == appState.wizardStep ? Color.primary.opacity(0.10) : Color.clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .foregroundStyle(canAccess(step) ? (step == appState.wizardStep ? Color.primary : .primary) : .secondary)
+                .opacity(canAccess(step) ? 1 : 0.46)
+                .padding(.leading, 14)
+                .padding(.trailing, 14)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 9)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(step == appState.wizardStep ? Color.primary.opacity(0.10) : Color.clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .foregroundStyle(canAccess(step) ? (step == appState.wizardStep ? Color.primary : .primary) : .secondary)
-            .opacity(canAccess(step) ? 1 : 0.46)
+            .contentShape(Rectangle())
         }
+        .padding(.leading, -14)
+        .padding(.trailing, -14)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .buttonStyle(.plain)
         .disabled(!canAccess(step))
     }
@@ -455,7 +471,7 @@ struct MainView: View {
         case .file:
             return true
         case .model:
-            return true
+            return appState.selectedFileURL != nil
         case .language, .output:
             return canConfigureOptions
         case .progress:
