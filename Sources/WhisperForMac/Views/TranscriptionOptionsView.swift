@@ -80,16 +80,13 @@ struct OutputOptionsView: View {
     @EnvironmentObject private var appState: AppState
 
     let onOpenOutputSettings: () -> Void
-    let onOpenModelSettings: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             if !appState.backendStatus.installedModelsAvailable {
                 blockedState(
                     title: "Install a model to unlock output settings.",
-                    detail: "Once a model is ready, transcript and subtitle defaults can be adjusted here.",
-                    actionTitle: "More Models…",
-                    action: onOpenModelSettings
+                    detail: "Once a model is ready, transcript and subtitle defaults can be adjusted here."
                 )
             } else if appState.selectedFileURL == nil {
                 blockedState(
@@ -99,9 +96,7 @@ struct OutputOptionsView: View {
             } else if appState.selectedInstalledModelInfo == nil {
                 blockedState(
                     title: "Choose an installed model before continuing.",
-                    detail: "Open model management to install or switch to a locally available model.",
-                    actionTitle: "More Models…",
-                    action: onOpenModelSettings
+                    detail: "Open model management from the Models step to install or switch to a locally available model."
                 )
             } else {
                 outputSection
@@ -145,12 +140,8 @@ struct OutputOptionsView: View {
 
                 Divider()
 
-                HStack {
-                    Button("Default Folder…", action: onOpenOutputSettings)
-                        .buttonStyle(.borderless)
-                    Button("More Models…", action: onOpenModelSettings)
-                        .buttonStyle(.borderless)
-                }
+                Button("Change Folder…", action: onOpenOutputSettings)
+                    .buttonStyle(.borderless)
             }
         }
         .disabled(appState.jobState.isBusy)

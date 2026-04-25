@@ -195,8 +195,7 @@ struct MainView: View {
         case .output:
             stepContainer {
                 OutputOptionsView(
-                    onOpenOutputSettings: { appState.presentSettings(tab: .output) },
-                    onOpenModelSettings: { appState.presentSettings(tab: .models) }
+                    onOpenOutputSettings: { appState.presentSettings(tab: .output) }
                 )
                 .environmentObject(appState)
             } footer: {
@@ -220,6 +219,18 @@ struct MainView: View {
         case .progress:
             stepContainer {
                 progressStepContent
+            } footer: {
+                if case .succeeded = appState.jobState {
+                    HStack(spacing: 12) {
+                        Spacer()
+
+                        Button("Transcribe Another File") {
+                            appState.chooseAnotherFile()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                    }
+                }
             }
         }
     }

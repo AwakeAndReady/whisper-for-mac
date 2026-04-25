@@ -1,25 +1,5 @@
 import SwiftUI
 
-private enum ProgressStage: CaseIterable {
-    case preparing
-    case transcribing
-    case writing
-    case done
-
-    var title: String {
-        switch self {
-        case .preparing:
-            return "Preparing"
-        case .transcribing:
-            return "Transcribing"
-        case .writing:
-            return "Writing Files"
-        case .done:
-            return "Done"
-        }
-    }
-}
-
 struct JobProgressSection: View {
     @EnvironmentObject private var appState: AppState
 
@@ -32,8 +12,6 @@ struct JobProgressSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            stageStrip
-
             switch appState.jobState {
             case .idle, .awaitingConfirmation:
                 idleState
@@ -67,29 +45,6 @@ struct JobProgressSection: View {
             guard appState.jobState.isBusy else { return }
             refreshDisplayedProgress(at: now)
         }
-    }
-
-    private var stageStrip: some View {
-        HStack(spacing: 10) {
-            ForEach(ProgressStage.allCases, id: \.title) { stage in
-                HStack(spacing: 8) {
-                    Image(systemName: symbolName(for: stage))
-                        .font(.subheadline)
-                        .foregroundStyle(color(for: stage))
-                    Text(stage.title)
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(color(for: stage))
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(stageBackground(for: stage), in: Capsule())
-                .overlay {
-                    Capsule()
-                        .strokeBorder(stageBorder(for: stage), lineWidth: 1)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var idleState: some View {
@@ -176,11 +131,6 @@ struct JobProgressSection: View {
                     appState.revealOutputsInFinder()
                 }
                 .disabled(appState.lastOutputURLs.isEmpty)
-
-                Button("Transcribe Another File") {
-                    appState.chooseAnotherFile()
-                }
-                .buttonStyle(.borderedProminent)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -249,50 +199,6 @@ struct JobProgressSection: View {
         )
     }
 
-    private func symbolName(for stage: ProgressStage) -> String {
-        switch stageStatus(for: stage) {
-        case .done:
-            return "checkmark.circle.fill"
-        case .active:
-            return "clock.arrow.trianglehead.counterclockwise.rotate.90"
-        case .pending:
-            return "circle"
-        }
-    }
-
-    private func color(for stage: ProgressStage) -> Color {
-        switch stageStatus(for: stage) {
-        case .done:
-            return Color(nsColor: .systemGreen)
-        case .active:
-            return .accentColor
-        case .pending:
-            return .secondary
-        }
-    }
-
-    private func stageBackground(for stage: ProgressStage) -> Color {
-        switch stageStatus(for: stage) {
-        case .done:
-            return Color(nsColor: .systemGreen).opacity(0.07)
-        case .active:
-            return Color.accentColor.opacity(0.08)
-        case .pending:
-            return Color.secondary.opacity(0.05)
-        }
-    }
-
-    private func stageBorder(for stage: ProgressStage) -> Color {
-        switch stageStatus(for: stage) {
-        case .done:
-            return Color(nsColor: .systemGreen).opacity(0.16)
-        case .active:
-            return Color.accentColor.opacity(0.18)
-        case .pending:
-            return Color(nsColor: .separatorColor).opacity(0.16)
-        }
-    }
-
     private func outputSymbol(for url: URL) -> String {
         switch url.pathExtension.lowercased() {
         case OutputFormat.txt.rawValue:
@@ -311,31 +217,4 @@ struct JobProgressSection: View {
     private func refreshDisplayedProgress(at now: Date) {
         displayedProgress = progressSmoother.updatedState(for: appState.jobState, at: now, previous: displayedProgress)
     }
-
-    private func stageStatus(for stage: ProgressStage) -> StageStatus {
-        switch appState.jobState {
-        case .idle, .awaitingConfirmation, .failed:
-            return .pending
-        case .preparing:
-            return stage == .preparing ? .active : .pending
-        case .running:
-            if stage == .preparing {
-                return .done
-            }
-            return stage == .transcribing ? .active : .pending
-        case .writingOutputs:
-            if stage == .done {
-                return .pending
-            }
-            return stage == .writing ? .active : .done
-        case .succeeded:
-            return .done
-        }
-    }
-}
-
-private enum StageStatus {
-    case pending
-    case active
-    case done
 }
