@@ -74,6 +74,8 @@ final class AppState: ObservableObject {
     @Published var backendSetupMessage = ""
     @Published var transientErrorMessage: String?
     @Published var lastOutputURLs: [URL] = []
+    @Published private(set) var currentTranscriptionStartedAt: Date?
+    @Published private(set) var lastTranscriptionDuration: TimeInterval?
     @Published var settingsTab: SettingsTab = .engine
     @Published var wizardStep: WizardStep = .file
 
@@ -255,6 +257,8 @@ final class AppState: ObservableObject {
 
         selectedFileURL = nil
         lastOutputURLs = []
+        currentTranscriptionStartedAt = nil
+        lastTranscriptionDuration = nil
         transientErrorMessage = error
         jobState = .failed(message: error)
         wizardStep = .file
@@ -268,6 +272,8 @@ final class AppState: ObservableObject {
         selectedFileURL = nil
         transientErrorMessage = nil
         lastOutputURLs = []
+        currentTranscriptionStartedAt = nil
+        lastTranscriptionDuration = nil
         if !jobState.isBusy {
             jobState = .idle
         }
@@ -299,7 +305,10 @@ final class AppState: ObservableObject {
             outputDirectoryURL: outputAccess.url
         )
 
+        let startedAt = Date()
         jobState = .preparing
+        currentTranscriptionStartedAt = startedAt
+        lastTranscriptionDuration = nil
         transientErrorMessage = nil
         wizardStep = .progress
 
@@ -308,10 +317,15 @@ final class AppState: ObservableObject {
                 let outputURLs = try await backend.transcribe(configuration: configuration) { [weak self] state in
                     self?.jobState = state
                 }
+                let finishedAt = Date()
                 lastOutputURLs = outputURLs
+                lastTranscriptionDuration = max(0, finishedAt.timeIntervalSince(startedAt))
+                currentTranscriptionStartedAt = nil
                 jobState = .succeeded(outputURLs: outputURLs)
                 NSWorkspace.shared.activateFileViewerSelecting(outputURLs)
             } catch {
+                currentTranscriptionStartedAt = nil
+                lastTranscriptionDuration = nil
                 transientErrorMessage = error.localizedDescription
                 jobState = .failed(message: error.localizedDescription)
             }
@@ -321,6 +335,8 @@ final class AppState: ObservableObject {
 
     func cancelTranscription() {
         backend.cancelCurrentWork()
+        currentTranscriptionStartedAt = nil
+        lastTranscriptionDuration = nil
         jobState = .failed(message: "The transcription was cancelled.")
         wizardStep = .progress
     }
@@ -488,6 +504,8 @@ final class AppState: ObservableObject {
         switch jobState {
         case .succeeded, .failed:
             lastOutputURLs = []
+            currentTranscriptionStartedAt = nil
+            lastTranscriptionDuration = nil
             jobState = .idle
         case .idle, .awaitingConfirmation, .preparing, .running, .writingOutputs:
             break

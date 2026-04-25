@@ -6,6 +6,7 @@ struct JobProgressSection: View {
     let onOpenModelSettings: () -> Void
 
     @State private var displayedProgress = TranscriptionProgressDisplayState()
+    @State private var timerDate = Date()
 
     private let progressSmoother = TranscriptionProgressSmoother()
     private let progressTimer = Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()
@@ -36,12 +37,17 @@ struct JobProgressSection: View {
             }
         }
         .onAppear {
-            refreshDisplayedProgress(at: Date())
+            let now = Date()
+            timerDate = now
+            refreshDisplayedProgress(at: now)
         }
         .onChange(of: appState.jobState) { _, _ in
-            refreshDisplayedProgress(at: Date())
+            let now = Date()
+            timerDate = now
+            refreshDisplayedProgress(at: now)
         }
         .onReceive(progressTimer) { now in
+            timerDate = now
             guard appState.jobState.isBusy else { return }
             refreshDisplayedProgress(at: now)
         }
@@ -68,8 +74,19 @@ struct JobProgressSection: View {
 
     private func runningState(title: String, detail: String, fraction: Double? = nil) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(title)
-                .font(.headline)
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text(title)
+                    .font(.headline)
+
+                Spacer(minLength: 12)
+
+                if let elapsedCounter {
+                    Text(elapsedCounter)
+                        .font(.subheadline.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel("Elapsed time \(elapsedCounter)")
+                }
+            }
 
             Text(detail)
                 .font(.subheadline)
@@ -99,13 +116,21 @@ struct JobProgressSection: View {
 
     private var successState: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(Color(nsColor: .systemGreen))
 
-                Text("Transcript finished successfully.")
-                    .font(.headline)
-                    .foregroundStyle(.primary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Transcript finished successfully.")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+
+                    if let lastTranscriptionDuration = appState.lastTranscriptionDuration {
+                        Text(TranscriptionDurationFormatter.successSentence(for: lastTranscriptionDuration))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
 
             if !appState.lastOutputURLs.isEmpty {
@@ -212,6 +237,16 @@ struct JobProgressSection: View {
 
     private func displayedFraction(fallingBackTo fallback: Double?) -> Double? {
         displayedProgress.displayedFraction ?? fallback
+    }
+
+    private var elapsedCounter: String? {
+        guard appState.jobState.isBusy,
+              let currentTranscriptionStartedAt = appState.currentTranscriptionStartedAt
+        else { return nil }
+
+        return TranscriptionDurationFormatter.elapsedCounter(
+            for: timerDate.timeIntervalSince(currentTranscriptionStartedAt)
+        )
     }
 
     private func refreshDisplayedProgress(at now: Date) {

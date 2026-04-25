@@ -63,7 +63,7 @@ func homeStateFollowsSetupReadyAndCompletedFlow() {
     #expect(appState.homeState == .readyForFile)
 
     appState.selectedFileURL = URL(fileURLWithPath: "/tmp/example.wav")
-    appState.wizardStep = .options
+    appState.wizardStep = .language
     #expect(appState.homeState == .readyToRun)
 
     appState.jobState = .succeeded(outputURLs: [])
