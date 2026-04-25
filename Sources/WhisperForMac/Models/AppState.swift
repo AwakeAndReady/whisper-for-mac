@@ -28,7 +28,7 @@ enum WizardStep: Int, CaseIterable {
         case .output:
             return "Output"
         case .progress:
-            return "Progress and Results"
+            return "Results"
         }
     }
 
@@ -43,7 +43,7 @@ enum WizardStep: Int, CaseIterable {
         case .output:
             return "Output"
         case .progress:
-            return "Progress"
+            return "Results"
         }
     }
 }

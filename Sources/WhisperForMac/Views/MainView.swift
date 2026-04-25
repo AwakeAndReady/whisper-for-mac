@@ -144,6 +144,7 @@ struct MainView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
+                    .keyboardShortcut(.defaultAction)
                     .disabled(appState.selectedFileURL == nil)
                 }
             }
@@ -165,6 +166,7 @@ struct MainView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
+                    .keyboardShortcut(.defaultAction)
                     .disabled(!canConfigureOptions)
                 }
             }
@@ -189,6 +191,7 @@ struct MainView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
+                    .keyboardShortcut(.defaultAction)
                     .disabled(!canConfigureOptions)
                 }
             }
@@ -213,6 +216,7 @@ struct MainView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
+                    .keyboardShortcut(.defaultAction)
                     .disabled(!appState.canStartTranscription)
                 }
             }
@@ -229,6 +233,7 @@ struct MainView: View {
                         }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.large)
+                        .keyboardShortcut(.defaultAction)
                     }
                 }
             }
@@ -315,8 +320,8 @@ struct MainView: View {
 
     private var progressStepContent: some View {
         optionsSection(
-            title: "Progress",
-            detail: "Follow the current stage and review finished output files here."
+            title: "Results",
+            detail: "Transcription status and finished output files appear here."
         ) {
             JobProgressSection(
                 onOpenModelSettings: { appState.presentSettings(tab: .models) }

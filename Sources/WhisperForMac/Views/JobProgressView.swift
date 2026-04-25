@@ -57,7 +57,7 @@ struct JobProgressSection: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("No transcription is running right now.")
                 .font(.headline)
-            Text("Once you start a job, the current stage and the finished output files will appear here.")
+            Text("Once you start a job, its status and finished output files will appear here.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
