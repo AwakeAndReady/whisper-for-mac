@@ -8,6 +8,7 @@ struct WhisperForMacApp: App {
     @State private var isWindowActive = true
     private let fixedWindowSize = CGSize(width: 680, height: 404)
     private let titlebarHeight: CGFloat = 54
+    private let sidebarWidth: CGFloat = 190
 
     var body: some Scene {
         WindowGroup("Whisper for Mac") {
@@ -18,6 +19,7 @@ struct WhisperForMacApp: App {
                     FixedWindowConfigurator(
                         contentSize: fixedWindowSize,
                         titlebarHeight: titlebarHeight,
+                        sidebarWidth: sidebarWidth,
                         isWindowActive: $isWindowActive
                     )
                 }

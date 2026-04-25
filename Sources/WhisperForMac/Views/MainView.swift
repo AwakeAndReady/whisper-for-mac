@@ -24,19 +24,9 @@ struct MainView: View {
                 .fill(.ultraThinMaterial)
                 .overlay(WizardChrome.appBackground)
         }
-        .overlay(alignment: .topLeading) {
-            sidebarBackground
-                .frame(width: sidebarWidth, height: windowChromeHeight)
-                .allowsHitTesting(false)
-        }
-        .overlay(alignment: .topLeading) {
-            topDividerExtension
-                .allowsHitTesting(false)
-        }
         .navigationTitle("Whisper for Mac")
         .toolbar(removing: .title)
-        .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
-        .toolbarBackground(toolbarBackgroundColor, for: .windowToolbar)
+        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Spacer()
@@ -111,17 +101,6 @@ struct MainView: View {
                 WizardChrome.inactiveChrome
             }
         }
-    }
-
-    private var topDividerExtension: some View {
-        Rectangle()
-            .fill(Color(nsColor: .separatorColor).opacity(0.18))
-            .frame(width: 1, height: windowChromeHeight)
-            .offset(x: sidebarWidth)
-    }
-
-    private var toolbarBackgroundColor: Color {
-        isWindowActive ? WizardChrome.activeToolbarChrome : WizardChrome.inactiveChrome
     }
 
     @ViewBuilder

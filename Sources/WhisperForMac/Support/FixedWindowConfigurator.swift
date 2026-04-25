@@ -4,6 +4,7 @@ import SwiftUI
 struct FixedWindowConfigurator: NSViewRepresentable {
     let contentSize: CGSize
     let titlebarHeight: CGFloat
+    let sidebarWidth: CGFloat
     @Binding var isWindowActive: Bool
 
     func makeCoordinator() -> Coordinator {
@@ -41,20 +42,14 @@ struct FixedWindowConfigurator: NSViewRepresentable {
         window.titleVisibility = .hidden
         window.isOpaque = false
         window.backgroundColor = .clear
-        configureTitlebarAccessory(for: window)
+        configureTitlebarChrome(for: window)
     }
 
-    private func configureTitlebarAccessory(for window: NSWindow) {
-        let accessoryHeight: CGFloat = 0
-
-        if let existing = window.titlebarAccessoryViewControllers
-            .compactMap({ $0 as? WindowToolbarAccessoryController })
-            .first {
-            existing.updateHeight(accessoryHeight)
-        }
-
+    private func configureTitlebarChrome(for window: NSWindow) {
         window.titlebarSeparatorStyle = .none
+        installOrUpdateTitlebarChrome(in: window)
         positionWindowButtons(in: window)
+
         for button in [
             window.standardWindowButton(.closeButton),
             window.standardWindowButton(.miniaturizeButton),
@@ -62,6 +57,26 @@ struct FixedWindowConfigurator: NSViewRepresentable {
         ].compactMap({ $0 }) {
             button.isHidden = false
         }
+    }
+
+    private func installOrUpdateTitlebarChrome(in window: NSWindow) {
+        guard let closeButton = window.standardWindowButton(.closeButton),
+              let titlebarContainer = closeButton.superview
+        else { return }
+
+        if let chromeView = titlebarContainer.subviews.first(where: {
+            $0.identifier == .windowTitlebarChrome
+        }) as? WindowTitlebarChromeView {
+            chromeView.frame = titlebarContainer.bounds
+            chromeView.update(sidebarWidth: sidebarWidth, isWindowActive: window.isKeyWindow)
+            titlebarContainer.addSubview(chromeView, positioned: .below, relativeTo: closeButton)
+            return
+        }
+
+        let chromeView = WindowTitlebarChromeView(sidebarWidth: sidebarWidth, isWindowActive: window.isKeyWindow)
+        chromeView.identifier = .windowTitlebarChrome
+        chromeView.frame = titlebarContainer.bounds
+        titlebarContainer.addSubview(chromeView, positioned: .below, relativeTo: closeButton)
     }
 
     private func positionWindowButtons(in window: NSWindow) {
