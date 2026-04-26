@@ -88,7 +88,7 @@ actor WhisperEngine {
                 defer { retained.release() }
 
                 var contextParams = whisper_context_default_params()
-                contextParams.use_gpu = true
+                contextParams.use_gpu = false
 
                 guard let context = whisper_init_from_file_with_params(modelURL.path, contextParams) else {
                     continuation.resume(throwing: WhisperEngineError.modelLoadFailed)
