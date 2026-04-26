@@ -60,7 +60,8 @@ final class AppState: ObservableObject {
             installState: .notInstalled,
             localSizeBytes: nil,
             remoteSizeBytes: nil,
-            isMultilingual: $0.isMultilingual
+            isMultilingual: $0.isMultilingual,
+            coreMLInstallState: $0.supportsCoreMLAcceleration ? .notInstalled : .notAvailable
         )
     }
     @Published var selectedFileURL: URL?
@@ -99,6 +100,21 @@ final class AppState: ObservableObject {
 
     var selectedInstalledModelInfo: WhisperModelInfo? {
         installedModels.first(where: { $0.id == selectedModelID })
+    }
+
+    var shouldUseCoreMLForSelectedModel: Bool {
+        preferences.useCoreMLAcceleration &&
+            isAppleSiliconBuild &&
+            (selectedModelInfo?.coreMLInstallState.isAvailable ?? false) &&
+            (selectedModelInfo?.coreMLAssetsAvailable ?? false)
+    }
+
+    var isAppleSiliconBuild: Bool {
+        #if arch(arm64)
+            true
+        #else
+            false
+        #endif
     }
 
     var selectedFileError: String? {
@@ -302,7 +318,8 @@ final class AppState: ObservableObject {
             task: selectedTask,
             languageMode: selectedLanguageMode,
             outputFormats: preferences.outputFormats,
-            outputDirectoryURL: outputAccess.url
+            outputDirectoryURL: outputAccess.url,
+            useCoreML: shouldUseCoreMLForSelectedModel
         )
 
         let startedAt = Date()
@@ -394,6 +411,58 @@ final class AppState: ObservableObject {
         }
     }
 
+    func installCoreMLAssets(_ modelID: String) {
+        updateModel(modelID) {
+            $0.coreMLInstallState = .installing(progress: nil, bytesReceived: nil, totalBytes: nil)
+        }
+
+        Task {
+            do {
+                try await backend.installCoreMLAssets(
+                    modelID,
+                    update: { [weak self] message in
+                        self?.backendSetupMessage = message
+                    },
+                    updateProgress: { [weak self] progress, bytesReceived, totalBytes in
+                        self?.updateModel(modelID) {
+                            $0.coreMLInstallState = .installing(
+                                progress: progress,
+                                bytesReceived: bytesReceived,
+                                totalBytes: totalBytes
+                            )
+                        }
+                    }
+                )
+                await refreshBackendStatus()
+            } catch {
+                updateModel(modelID) {
+                    $0.coreMLInstallState = .failed(message: error.localizedDescription)
+                }
+                transientErrorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    func removeCoreMLAssets(_ modelID: String) {
+        updateModel(modelID) {
+            $0.coreMLInstallState = .removing
+        }
+
+        Task {
+            do {
+                try await backend.removeCoreMLAssets(modelID) { [weak self] message in
+                    self?.backendSetupMessage = message
+                }
+                await refreshBackendStatus()
+            } catch {
+                updateModel(modelID) {
+                    $0.coreMLInstallState = .failed(message: error.localizedDescription)
+                }
+                transientErrorMessage = error.localizedDescription
+            }
+        }
+    }
+
     func savePreferences() {
         PreferencesStore.save(preferences)
     }
@@ -466,8 +535,26 @@ final class AppState: ObservableObject {
         }
     }
 
+    nonisolated static func preservedCoreMLInstallState(
+        current: CoreMLInstallState?,
+        refreshedIsInstalled: Bool,
+        refreshedIsAvailable: Bool
+    ) -> CoreMLInstallState? {
+        switch current {
+        case let .installing(progress, bytesReceived, totalBytes):
+            guard refreshedIsAvailable, !refreshedIsInstalled else { return nil }
+            return .installing(progress: progress, bytesReceived: bytesReceived, totalBytes: totalBytes)
+        case .removing:
+            guard refreshedIsAvailable, refreshedIsInstalled else { return nil }
+            return .removing
+        default:
+            return nil
+        }
+    }
+
     private func preserveModelStates(with refreshed: [WhisperModelInfo]) {
         let currentStates = Dictionary(uniqueKeysWithValues: models.map { ($0.id, $0.installState) })
+        let currentCoreMLStates = Dictionary(uniqueKeysWithValues: models.map { ($0.id, $0.coreMLInstallState) })
         models = refreshed.map { info in
             var info = info
             if let preservedState = Self.preservedInstallState(
@@ -475,6 +562,13 @@ final class AppState: ObservableObject {
                 refreshedIsInstalled: info.isInstalled
             ) {
                 info.installState = preservedState
+            }
+            if let preservedCoreMLState = Self.preservedCoreMLInstallState(
+                current: currentCoreMLStates[info.id],
+                refreshedIsInstalled: info.coreMLAssetsAvailable,
+                refreshedIsAvailable: info.coreMLInstallState.isAvailable
+            ) {
+                info.coreMLInstallState = preservedCoreMLState
             }
             return info
         }

@@ -10,12 +10,14 @@ struct AppPreferences {
     var outputLocationMode: OutputLocationMode
     var customOutputDirectory: URL?
     var customOutputDirectoryBookmark: Data?
+    var useCoreMLAcceleration: Bool
 
     static let `default` = AppPreferences(
         outputFormats: [.txt, .vtt],
         outputLocationMode: .custom,
         customOutputDirectory: FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first,
-        customOutputDirectoryBookmark: nil
+        customOutputDirectoryBookmark: nil,
+        useCoreMLAcceleration: false
     )
 }
 
@@ -24,6 +26,7 @@ enum PreferencesStore {
     private static let outputLocationModeKey = "outputLocationMode"
     private static let customOutputDirectoryKey = "customOutputDirectory"
     private static let customOutputDirectoryBookmarkKey = "customOutputDirectoryBookmark"
+    private static let useCoreMLAccelerationKey = "useCoreMLAcceleration"
 
     static func load() -> AppPreferences {
         let defaults = UserDefaults.standard
@@ -37,7 +40,8 @@ enum PreferencesStore {
             outputFormats: formats.isEmpty ? AppPreferences.default.outputFormats : formats,
             outputLocationMode: mode == .nextToSource ? .custom : mode,
             customOutputDirectory: customURL ?? defaultDesktop,
-            customOutputDirectoryBookmark: bookmark
+            customOutputDirectoryBookmark: bookmark,
+            useCoreMLAcceleration: defaults.bool(forKey: useCoreMLAccelerationKey)
         )
     }
 
@@ -47,5 +51,6 @@ enum PreferencesStore {
         defaults.set(preferences.outputLocationMode.rawValue, forKey: outputLocationModeKey)
         defaults.set(preferences.customOutputDirectory?.path, forKey: customOutputDirectoryKey)
         defaults.set(preferences.customOutputDirectoryBookmark, forKey: customOutputDirectoryBookmarkKey)
+        defaults.set(preferences.useCoreMLAcceleration, forKey: useCoreMLAccelerationKey)
     }
 }

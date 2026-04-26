@@ -29,6 +29,43 @@ enum WhisperModelInstallState: Equatable {
     }
 }
 
+enum CoreMLInstallState: Equatable {
+    case notAvailable
+    case notInstalled
+    case installed
+    case installing(progress: Double?, bytesReceived: Int64?, totalBytes: Int64?)
+    case removing
+    case failed(message: String)
+
+    var isAvailable: Bool {
+        if case .notAvailable = self {
+            return false
+        }
+        return true
+    }
+
+    var isInstalled: Bool {
+        if case .installed = self {
+            return true
+        }
+        return false
+    }
+
+    var isInstalling: Bool {
+        if case .installing = self {
+            return true
+        }
+        return false
+    }
+
+    var isRemoving: Bool {
+        if case .removing = self {
+            return true
+        }
+        return false
+    }
+}
+
 struct WhisperModelInfo: Identifiable, Equatable {
     var id: String
     var displayName: String
@@ -38,6 +75,9 @@ struct WhisperModelInfo: Identifiable, Equatable {
     var localSizeBytes: Int64?
     var remoteSizeBytes: Int64?
     var isMultilingual: Bool
+    var coreMLAssetsAvailable = false
+    var coreMLSizeBytes: Int64?
+    var coreMLInstallState: CoreMLInstallState = .notAvailable
 
     var highlightLabel: String? {
         switch id {
@@ -99,6 +139,24 @@ struct WhisperModelInfo: Identifiable, Equatable {
         }
     }
 
+    var coreMLStatusText: String? {
+        switch coreMLInstallState {
+        case .notAvailable:
+            return nil
+        case .installed:
+            let size = coreMLSizeText.map { " • \($0)" } ?? ""
+            return "Core ML encoder installed\(size)"
+        case .notInstalled:
+            return "Core ML encoder available"
+        case .installing:
+            return "Downloading Core ML encoder"
+        case .removing:
+            return "Removing Core ML encoder"
+        case let .failed(message):
+            return message
+        }
+    }
+
     var capabilitySummary: String {
         let languageSummary = isMultilingual ? "Multilingual" : "English Only"
         if let highlightLabel {
@@ -128,6 +186,40 @@ struct WhisperModelInfo: Identifiable, Equatable {
         }
 
         return "Unavailable"
+    }
+
+    var coreMLSizeText: String? {
+        guard let coreMLSizeBytes else { return nil }
+
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: coreMLSizeBytes)
+    }
+
+    var coreMLInstallProgressFraction: Double? {
+        guard case let .installing(progress, _, _) = coreMLInstallState else {
+            return nil
+        }
+        return progress
+    }
+
+    var coreMLInstallProgressAccessibilityText: String? {
+        guard case let .installing(_, bytesReceived, totalBytes) = coreMLInstallState else {
+            return nil
+        }
+
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+
+        if let totalBytes {
+            return "\(formatter.string(fromByteCount: bytesReceived ?? 0)) of \(formatter.string(fromByteCount: totalBytes))"
+        }
+
+        if let bytesReceived {
+            return formatter.string(fromByteCount: bytesReceived)
+        }
+
+        return nil
     }
 
     var installProgressFraction: Double? {

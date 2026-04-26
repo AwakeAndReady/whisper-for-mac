@@ -101,6 +101,7 @@ private final class ModelDownloadSession: NSObject, URLSessionDownloadDelegate, 
 enum BackendServiceError: LocalizedError {
     case unknownModel
     case invalidModelSelection
+    case coreMLUnavailable
     case installFailed(String)
     case noUsableTranscript
 
@@ -110,6 +111,8 @@ enum BackendServiceError: LocalizedError {
             return "The selected Whisper model is not supported by this build."
         case .invalidModelSelection:
             return "Install a Whisper model in Settings before starting a transcription."
+        case .coreMLUnavailable:
+            return "Core ML acceleration is available for Tiny, Base, and Small models."
         case let .installFailed(message):
             return message
         case .noUsableTranscript:
@@ -188,6 +191,41 @@ final class WhisperBackendService {
         update("Installed \(descriptor.displayName)")
     }
 
+    func installCoreMLAssets(
+        _ modelID: String,
+        update: @escaping @MainActor (String) -> Void,
+        updateProgress: @escaping @MainActor (Double?, Int64, Int64?) -> Void
+    ) async throws {
+        guard let descriptor = SupportedModels.descriptor(for: modelID) else {
+            throw BackendServiceError.unknownModel
+        }
+        guard let downloadURL = descriptor.coreMLEncoderDownloadURL else {
+            throw BackendServiceError.coreMLUnavailable
+        }
+
+        try ensureDirectories()
+        let modelURL = paths.modelsDirectory.appendingPathComponent(descriptor.filename)
+        guard FileManager.default.fileExists(atPath: modelURL.path) else {
+            throw BackendServiceError.invalidModelSelection
+        }
+
+        update("Downloading Core ML encoder for \(descriptor.displayName)")
+
+        let downloader = ModelDownloadSession()
+        let (temporaryURL, response) = try await downloader.download(from: downloadURL) { progress, bytesReceived, totalBytes in
+            Task { @MainActor in
+                updateProgress(progress, bytesReceived, totalBytes)
+            }
+        }
+        if let httpResponse = response as? HTTPURLResponse, !(200 ..< 300).contains(httpResponse.statusCode) {
+            throw BackendServiceError.installFailed("Downloading the Core ML encoder for \(descriptor.displayName) failed with status \(httpResponse.statusCode).")
+        }
+
+        update("Installing Core ML encoder for \(descriptor.displayName)")
+        try installCoreMLArchive(temporaryURL, for: descriptor)
+        update("Installed Core ML encoder for \(descriptor.displayName)")
+    }
+
     func removeModel(_ modelID: String, update: @escaping @MainActor (String) -> Void) async throws {
         guard let descriptor = SupportedModels.descriptor(for: modelID) else {
             throw BackendServiceError.unknownModel
@@ -198,7 +236,28 @@ final class WhisperBackendService {
             try FileManager.default.removeItem(at: destination)
         }
 
+        let coreMLDestination = paths.modelsDirectory.appendingPathComponent(descriptor.coreMLEncoderFilename)
+        if FileManager.default.fileExists(atPath: coreMLDestination.path) {
+            try FileManager.default.removeItem(at: coreMLDestination)
+        }
+
         update("Removed \(descriptor.displayName)")
+    }
+
+    func removeCoreMLAssets(_ modelID: String, update: @escaping @MainActor (String) -> Void) async throws {
+        guard let descriptor = SupportedModels.descriptor(for: modelID) else {
+            throw BackendServiceError.unknownModel
+        }
+        guard descriptor.supportsCoreMLAcceleration else {
+            throw BackendServiceError.coreMLUnavailable
+        }
+
+        let destination = paths.modelsDirectory.appendingPathComponent(descriptor.coreMLEncoderFilename)
+        if FileManager.default.fileExists(atPath: destination.path) {
+            try FileManager.default.removeItem(at: destination)
+        }
+
+        update("Removed Core ML encoder for \(descriptor.displayName)")
     }
 
     func transcribe(configuration: WhisperJobConfiguration, update: @escaping @MainActor (TranscriptionJobState) -> Void) async throws -> [URL] {
@@ -221,6 +280,7 @@ final class WhisperBackendService {
             task: configuration.task,
             languageMode: configuration.languageMode,
             isModelMultilingual: descriptor.isMultilingual,
+            useCoreML: configuration.useCoreML,
             progressLabel: "Transcribing audio",
             update: update
         )
@@ -238,6 +298,7 @@ final class WhisperBackendService {
                 task: configuration.task,
                 languageMode: .explicit(code: "en"),
                 isModelMultilingual: descriptor.isMultilingual,
+                useCoreML: configuration.useCoreML,
                 progressLabel: "Retrying in English",
                 update: update
             )
@@ -298,6 +359,9 @@ final class WhisperBackendService {
         let attributes = try? fileManager.attributesOfItem(atPath: modelURL.path)
         let size = attributes?[.size] as? NSNumber
         let isInstalled = fileManager.fileExists(atPath: modelURL.path)
+        let coreMLURL = paths.modelsDirectory.appendingPathComponent(descriptor.coreMLEncoderFilename)
+        let coreMLAssetsAvailable = fileManager.fileExists(atPath: coreMLURL.path)
+        let coreMLSizeBytes = coreMLAssetsAvailable ? directorySize(at: coreMLURL) : nil
         let remoteSizeBytes = isInstalled ? nil : await remoteSize(for: descriptor)
 
         return WhisperModelInfo(
@@ -308,8 +372,31 @@ final class WhisperBackendService {
             installState: isInstalled ? .installed : .notInstalled,
             localSizeBytes: size?.int64Value,
             remoteSizeBytes: remoteSizeBytes,
-            isMultilingual: descriptor.isMultilingual
+            isMultilingual: descriptor.isMultilingual,
+            coreMLAssetsAvailable: coreMLAssetsAvailable,
+            coreMLSizeBytes: coreMLSizeBytes,
+            coreMLInstallState: coreMLInstallState(
+                for: descriptor,
+                isModelInstalled: isInstalled,
+                coreMLAssetsAvailable: coreMLAssetsAvailable
+            )
         )
+    }
+
+    private func coreMLInstallState(
+        for descriptor: WhisperModelDescriptor,
+        isModelInstalled: Bool,
+        coreMLAssetsAvailable: Bool
+    ) -> CoreMLInstallState {
+        guard descriptor.supportsCoreMLAcceleration else {
+            return .notAvailable
+        }
+
+        guard isModelInstalled else {
+            return .notInstalled
+        }
+
+        return coreMLAssetsAvailable ? .installed : .notInstalled
     }
 
     private func remoteSize(for descriptor: WhisperModelDescriptor) async -> Int64? {
@@ -360,6 +447,7 @@ final class WhisperBackendService {
         task: WhisperTask,
         languageMode: LanguageMode,
         isModelMultilingual: Bool,
+        useCoreML: Bool,
         progressLabel: String,
         update: @escaping @MainActor (TranscriptionJobState) -> Void
     ) async throws -> [WhisperSegment] {
@@ -368,12 +456,93 @@ final class WhisperBackendService {
             samples: samples,
             task: task,
             languageMode: languageMode,
-            isModelMultilingual: isModelMultilingual
+            isModelMultilingual: isModelMultilingual,
+            useCoreML: useCoreML
         ) { progress in
             let fraction = 0.18 + (progress * 0.72)
             Task { @MainActor in
                 update(.running(progressText: progressLabel, fraction: min(max(fraction, 0.18), 0.9)))
             }
         }
+    }
+
+    private func directorySize(at url: URL) -> Int64? {
+        let fileManager = FileManager.default
+        guard let enumerator = fileManager.enumerator(
+            at: url,
+            includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else { return nil }
+
+        var total: Int64 = 0
+        for case let fileURL as URL in enumerator {
+            guard
+                let values = try? fileURL.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey]),
+                values.isRegularFile == true,
+                let fileSize = values.fileSize
+            else { continue }
+
+            total += Int64(fileSize)
+        }
+        return total
+    }
+
+    private func installCoreMLArchive(_ archiveURL: URL, for descriptor: WhisperModelDescriptor) throws {
+        let fileManager = FileManager.default
+        let extractionRoot = fileManager.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer {
+            try? fileManager.removeItem(at: archiveURL)
+            try? fileManager.removeItem(at: extractionRoot)
+        }
+
+        try fileManager.createDirectory(at: extractionRoot, withIntermediateDirectories: true)
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+        process.arguments = ["-x", "-k", archiveURL.path, extractionRoot.path]
+        try process.run()
+        process.waitUntilExit()
+
+        guard process.terminationStatus == 0 else {
+            throw BackendServiceError.installFailed("The Core ML encoder archive could not be extracted.")
+        }
+
+        guard let extractedEncoder = extractedCoreMLEncoder(
+            in: extractionRoot,
+            expectedFilename: descriptor.coreMLEncoderFilename
+        ) else {
+            throw BackendServiceError.installFailed("The Core ML encoder archive did not contain \(descriptor.coreMLEncoderFilename).")
+        }
+
+        let destination = paths.modelsDirectory.appendingPathComponent(descriptor.coreMLEncoderFilename)
+        if fileManager.fileExists(atPath: destination.path) {
+            try fileManager.removeItem(at: destination)
+        }
+        try fileManager.moveItem(at: extractedEncoder, to: destination)
+    }
+
+    private func extractedCoreMLEncoder(in root: URL, expectedFilename: String) -> URL? {
+        let fileManager = FileManager.default
+        let expectedURL = root.appendingPathComponent(expectedFilename, isDirectory: true)
+        if fileManager.fileExists(atPath: expectedURL.path) {
+            return expectedURL
+        }
+
+        guard let enumerator = fileManager.enumerator(
+            at: root,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else { return nil }
+
+        for case let fileURL as URL in enumerator {
+            guard fileURL.lastPathComponent == expectedFilename else { continue }
+            let values = try? fileURL.resourceValues(forKeys: [.isDirectoryKey])
+            if values?.isDirectory == true {
+                return fileURL
+            }
+        }
+
+        return nil
     }
 }

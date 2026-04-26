@@ -6,12 +6,37 @@ struct WhisperModelDescriptor: Identifiable, Equatable {
     var filename: String
     var downloadURL: URL
     var isMultilingual: Bool
+
+    var supportsCoreMLAcceleration: Bool {
+        SupportedModels.coreMLSupportedModelIDs.contains(id)
+    }
+
+    var coreMLEncoderFilename: String {
+        filename.replacingOccurrences(of: ".bin", with: "-encoder.mlmodelc")
+    }
+
+    var coreMLEncoderArchiveFilename: String {
+        "\(coreMLEncoderFilename).zip"
+    }
+
+    var coreMLEncoderDownloadURL: URL? {
+        guard supportsCoreMLAcceleration else { return nil }
+        return URL(string: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/\(coreMLEncoderArchiveFilename)")!
+    }
 }
 
 enum SupportedModels {
     static let recommendedModelID = "base"
     static let fastestModelID = "tiny"
     static let bestQualityModelID = "large-v3"
+    static let coreMLSupportedModelIDs: Set<String> = [
+        "tiny",
+        "tiny.en",
+        "base",
+        "base.en",
+        "small",
+        "small.en",
+    ]
 
     static let all: [WhisperModelDescriptor] = [
         descriptor("tiny", multilingual: true),

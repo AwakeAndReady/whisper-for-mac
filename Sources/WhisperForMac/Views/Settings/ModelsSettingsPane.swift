@@ -54,6 +54,11 @@ struct ModelsSettingsPane: View {
                             Text(model.setupSummary)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                            if let coreMLStatusText = model.coreMLStatusText, model.isInstalled {
+                                Text(coreMLStatusText)
+                                    .font(.caption)
+                                    .foregroundStyle(coreMLStatusForeground(for: model.coreMLInstallState))
+                            }
                             HStack(spacing: 10) {
                                 Text("Size: \(model.sizeText)")
                                     .font(.caption)
@@ -92,21 +97,24 @@ struct ModelsSettingsPane: View {
 
     private func modelActions(for model: WhisperModelInfo) -> some View {
         HStack(spacing: 8) {
-            if model.installState.isRemoving {
+            if model.installState.isRemoving || model.coreMLInstallState.isRemoving {
                 SwiftUI.ProgressView()
                     .controlSize(.small)
             } else if model.shouldShowInstallProgressIndicator {
                 installActivityIndicator(for: model)
+            } else if model.coreMLInstallState.isInstalling {
+                coreMLInstallActivityIndicator(for: model)
             } else {
                 Color.clear
                     .frame(width: 16, height: 16)
             }
 
             if model.isInstalled {
+                coreMLAction(for: model)
                 Button("Remove") {
                     appState.removeModel(model.id)
                 }
-                .disabled(model.installState.isRemoving)
+                .disabled(model.installState.isRemoving || model.coreMLInstallState.isInstalling || model.coreMLInstallState.isRemoving)
             } else {
                 Button("Install") {
                     appState.installModel(model.id)
@@ -114,6 +122,51 @@ struct ModelsSettingsPane: View {
                 .disabled(!appState.backendStatus.engineReady || model.installState.isInstalling)
             }
         }
-        .frame(width: 110, alignment: .trailing)
+        .frame(width: 270, alignment: .trailing)
+    }
+
+    private func coreMLInstallActivityIndicator(for model: WhisperModelInfo) -> some View {
+        Group {
+            if let progress = model.coreMLInstallProgressFraction {
+                ProgressView(value: progress)
+                    .progressViewStyle(.circular)
+            } else {
+                SwiftUI.ProgressView()
+            }
+        }
+        .controlSize(.small)
+        .help(model.coreMLInstallProgressAccessibilityText ?? "Downloading Core ML encoder for \(model.displayName)")
+    }
+
+    @ViewBuilder
+    private func coreMLAction(for model: WhisperModelInfo) -> some View {
+        switch model.coreMLInstallState {
+        case .notAvailable:
+            EmptyView()
+        case .installed:
+            Button("Remove Core ML") {
+                appState.removeCoreMLAssets(model.id)
+            }
+            .disabled(model.installState.isRemoving || model.coreMLInstallState.isRemoving)
+        case .notInstalled, .failed:
+            Button("Install Core ML") {
+                appState.installCoreMLAssets(model.id)
+            }
+            .disabled(
+                !appState.backendStatus.engineReady ||
+                    model.coreMLInstallState.isInstalling ||
+                    model.coreMLInstallState.isRemoving
+            )
+        case .installing, .removing:
+            Button("Install Core ML") {}
+                .disabled(true)
+        }
+    }
+
+    private func coreMLStatusForeground(for state: CoreMLInstallState) -> Color {
+        if case .failed = state {
+            return .orange
+        }
+        return .secondary
     }
 }

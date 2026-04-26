@@ -55,4 +55,5 @@ struct WhisperJobConfiguration: Equatable {
     var languageMode: LanguageMode
     var outputFormats: Set<OutputFormat>
     var outputDirectoryURL: URL
+    var useCoreML: Bool = false
 }

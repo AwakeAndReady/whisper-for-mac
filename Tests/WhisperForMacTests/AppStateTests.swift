@@ -31,6 +31,29 @@ func transientStatesPersistOnlyWhileUnderlyingFileStateMatches() {
     #expect(removing == .removing)
 }
 
+@Test
+func coreMLTransientStatesPersistOnlyWhileUnderlyingAssetStateMatches() {
+    let installing = AppState.preservedCoreMLInstallState(
+        current: .installing(progress: 0.25, bytesReceived: 25, totalBytes: 100),
+        refreshedIsInstalled: false,
+        refreshedIsAvailable: true
+    )
+    let removing = AppState.preservedCoreMLInstallState(
+        current: .removing,
+        refreshedIsInstalled: true,
+        refreshedIsAvailable: true
+    )
+    let unavailable = AppState.preservedCoreMLInstallState(
+        current: .installing(progress: nil, bytesReceived: nil, totalBytes: nil),
+        refreshedIsInstalled: false,
+        refreshedIsAvailable: false
+    )
+
+    #expect(installing == .installing(progress: 0.25, bytesReceived: 25, totalBytes: 100))
+    #expect(removing == .removing)
+    #expect(unavailable == nil)
+}
+
 @MainActor
 @Test
 func homeStateFollowsSetupReadyAndCompletedFlow() {

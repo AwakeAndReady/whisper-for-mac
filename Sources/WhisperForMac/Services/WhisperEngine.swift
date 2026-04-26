@@ -64,6 +64,7 @@ actor WhisperEngine {
         task: WhisperTask,
         languageMode: LanguageMode,
         isModelMultilingual: Bool,
+        useCoreML: Bool,
         onProgress: @escaping @Sendable (Double) -> Void
     ) async throws -> [WhisperSegment] {
         if task == .translate && !isModelMultilingual {
@@ -89,6 +90,7 @@ actor WhisperEngine {
 
                 var contextParams = whisper_context_default_params()
                 contextParams.use_gpu = false
+                contextParams.use_coreml = useCoreML
 
                 guard let context = whisper_init_from_file_with_params(modelURL.path, contextParams) else {
                     continuation.resume(throwing: WhisperEngineError.modelLoadFailed)

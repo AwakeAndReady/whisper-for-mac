@@ -60,7 +60,7 @@ struct MainView: View {
                 .frame(width: contentWidth, alignment: .topLeading)
         }
         .padding(.horizontal, 22)
-        .padding(.top, windowChromeHeight + 8)
+        .padding(.top, 16)
         .padding(.bottom, 18)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(WizardChrome.cardBackground)
@@ -209,6 +209,7 @@ struct MainView: View {
                     }
 
                     modelHighlight(for: selectedInstalledModel)
+                    coreMLAccelerationSection(for: selectedInstalledModel)
 
                     HStack {
                         Button("More Models…") {
@@ -306,9 +307,12 @@ struct MainView: View {
         @ViewBuilder footer: () -> Footer = { EmptyView() }
     ) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            content()
-
-            Spacer(minLength: 0)
+            ScrollView(.vertical) {
+                content()
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+            .scrollIndicators(.automatic)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
 
             footer()
                 .padding(.top, 16)
@@ -352,6 +356,53 @@ struct MainView: View {
             tint: .accentColor,
             tintOpacity: 0.03
         )
+    }
+
+    private func coreMLAccelerationSection(for model: WhisperModelInfo) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle(isOn: Binding(
+                get: {
+                    appState.preferences.useCoreMLAcceleration &&
+                        model.coreMLInstallState.isAvailable &&
+                        model.coreMLAssetsAvailable
+                },
+                set: { isEnabled in
+                    appState.preferences.useCoreMLAcceleration = isEnabled
+                    appState.savePreferences()
+                }
+            )) {
+                Text("Use Core ML acceleration")
+                    .font(.subheadline.weight(.semibold))
+            }
+            .disabled(!canToggleCoreMLAcceleration(for: model))
+
+            Text(coreMLAccelerationDetail(for: model))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.top, 2)
+    }
+
+    private func canToggleCoreMLAcceleration(for model: WhisperModelInfo) -> Bool {
+        appState.isAppleSiliconBuild && model.coreMLInstallState.isAvailable && model.coreMLAssetsAvailable
+    }
+
+    private func coreMLAccelerationDetail(for model: WhisperModelInfo) -> String {
+        guard appState.isAppleSiliconBuild else {
+            return "Core ML acceleration is intended for Apple Silicon. Intel builds continue using CPU and Accelerate."
+        }
+
+        guard model.coreMLInstallState.isAvailable else {
+            return "Core ML acceleration is available for Tiny, Base, and Small models."
+        }
+
+        if model.coreMLAssetsAvailable {
+            let size = model.coreMLSizeText.map { ", \($0)" } ?? ""
+            return "Core ML encoder installed\(size). Best for longer audio."
+        }
+
+        return "Install Core ML encoder in Settings > Models"
     }
 
     private func fileSummary(_ url: URL) -> some View {
@@ -421,6 +472,17 @@ struct MainView: View {
                     Text(step.shortTitle)
                         .font(.system(size: 15, weight: step == appState.wizardStep ? .semibold : .regular))
                     Spacer()
+                    if step == .progress, let fraction = sidebarProgressFraction {
+                        ProgressView(value: fraction)
+                            .progressViewStyle(.circular)
+                            .controlSize(.small)
+                            .frame(width: 14, height: 14)
+                    } else if step == .progress, shouldShowIndeterminateSidebarProgress {
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                            .controlSize(.small)
+                            .frame(width: 14, height: 14)
+                    }
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 9)
@@ -443,6 +505,25 @@ struct MainView: View {
 
     private var canConfigureOptions: Bool {
         appState.selectedFileURL != nil && appState.selectedInstalledModelInfo != nil
+    }
+
+    private var sidebarProgressFraction: Double? {
+        guard case let .running(_, fraction) = appState.jobState, let fraction else {
+            return nil
+        }
+
+        return min(max(fraction, 0), 1)
+    }
+
+    private var shouldShowIndeterminateSidebarProgress: Bool {
+        switch appState.jobState {
+        case .preparing, .writingOutputs:
+            return true
+        case let .running(_, fraction):
+            return fraction == nil
+        case .idle, .awaitingConfirmation, .succeeded, .failed:
+            return false
+        }
     }
 
     private func canAccess(_ step: WizardStep) -> Bool {

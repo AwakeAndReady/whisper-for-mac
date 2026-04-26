@@ -113,6 +113,7 @@ extern "C" {
 
     struct whisper_context_params {
         bool  use_gpu;
+        bool  use_coreml;
         bool  flash_attn;
         int   gpu_device;  // CUDA device
 
