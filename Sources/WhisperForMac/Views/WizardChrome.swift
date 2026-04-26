@@ -8,7 +8,7 @@ enum WizardChrome {
     static let cardBackground = Color(.sRGB, red: 1, green: 1, blue: 1, opacity: 0.96)
     static let cardHeaderBackground = Color(.sRGB, red: 242.0 / 255.0, green: 238.0 / 255.0, blue: 239.0 / 255.0, opacity: 0.98)
     static let controlBackground = Color(.sRGB, red: 239.0 / 255.0, green: 236.0 / 255.0, blue: 240.0 / 255.0, opacity: 1)
-    static let inactiveChrome = Color(.sRGB, red: 233.0 / 255.0, green: 232.0 / 255.0, blue: 237.0 / 255.0, opacity: 1)
+    static let inactiveChrome = Color(.sRGB, red: 228.0 / 255.0, green: 228.0 / 255.0, blue: 235.0 / 255.0, opacity: 1)
     static let activeToolbarChrome = Color(.sRGB, red: 246.0 / 255.0, green: 244.0 / 255.0, blue: 250.0 / 255.0, opacity: 1)
     static let activeSidebarTint = Color(.sRGB, red: 233.0 / 255.0, green: 232.0 / 255.0, blue: 237.0 / 255.0, opacity: 1)
 }

@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 
 struct MainView: View {
@@ -10,14 +9,11 @@ struct MainView: View {
     private let windowChromeHeight: CGFloat = 54
 
     var body: some View {
-        HStack(spacing: 0) {
-            sidebar
-
-            Divider()
-                .overlay(Color(nsColor: .separatorColor).opacity(0.18))
-
-            contentPane
-        }
+        WizardSplitViewControllerRepresentable(
+            sidebarWidth: sidebarWidth,
+            sidebar: AnyView(sidebar),
+            content: AnyView(contentPane)
+        )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background {
             Rectangle()
@@ -25,32 +21,6 @@ struct MainView: View {
                 .overlay(WizardChrome.appBackground)
         }
         .navigationTitle("Whisper for Mac")
-        .toolbar(removing: .title)
-        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Spacer()
-            }
-
-            ToolbarItemGroup(placement: .automatic) {
-                Button {
-                    appState.presentSettings(tab: .models)
-                } label: {
-                    Image(systemName: "gearshape")
-                        .font(.system(size: 19, weight: .regular))
-                }
-                .help("Settings")
-
-                Button {
-                    guard let url = URL(string: "https://github.com/AwakeAndReady/whisper-for-mac") else { return }
-                    NSWorkspace.shared.open(url)
-                } label: {
-                    Image(systemName: "questionmark.circle")
-                        .font(.system(size: 19, weight: .regular))
-                }
-                .help("Help")
-            }
-        }
         .fileImporter(
             isPresented: $appState.showFileImporter,
             allowedContentTypes: MediaFileValidator.importTypes,
@@ -73,10 +43,14 @@ struct MainView: View {
         .padding(.horizontal, 14)
         .padding(.top, windowChromeHeight + 8)
         .padding(.bottom, 16)
-        .frame(width: sidebarWidth)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .frame(maxHeight: .infinity, alignment: .topLeading)
         .background {
-            sidebarBackground
+            if isWindowActive {
+                Color.clear
+            } else {
+                WizardChrome.inactiveChrome
+            }
         }
     }
 
@@ -90,17 +64,6 @@ struct MainView: View {
         .padding(.bottom, 18)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(WizardChrome.cardBackground)
-    }
-
-    private var sidebarBackground: some View {
-        Group {
-            if isWindowActive {
-                SidebarMaterialView()
-                    .overlay(WizardChrome.activeSidebarTint.opacity(0.18))
-            } else {
-                WizardChrome.inactiveChrome
-            }
-        }
     }
 
     @ViewBuilder
