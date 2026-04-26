@@ -81,6 +81,8 @@ final class AppState: ObservableObject {
     @Published var wizardStep: WizardStep = .file
 
     private let backend = WhisperBackendService()
+    private var transcriptionTask: Task<Void, Never>?
+    private var activeTranscriptionID: UUID?
 
     var selectedLanguageMode: LanguageMode {
         selectedLanguageCode == "auto" ? .auto : .explicit(code: selectedLanguageCode)
@@ -308,9 +310,13 @@ final class AppState: ObservableObject {
 
     func runTranscription() {
         guard
+            canStartTranscription,
             let selectedFileURL,
             let outputAccess = ensureOutputDirectoryAccess(promptIfNeeded: true, showCancellationError: true)
         else { return }
+
+        transcriptionTask?.cancel()
+        backend.cancelCurrentWork()
 
         let configuration = WhisperJobConfiguration(
             inputURL: selectedFileURL,
@@ -329,29 +335,55 @@ final class AppState: ObservableObject {
         transientErrorMessage = nil
         wizardStep = .progress
 
-        Task { [outputAccess] in
+        let transcriptionID = UUID()
+        activeTranscriptionID = transcriptionID
+
+        transcriptionTask = Task { [configuration, outputAccess, startedAt, transcriptionID] in
+            defer {
+                outputAccess.invalidate()
+                if activeTranscriptionID == transcriptionID {
+                    transcriptionTask = nil
+                    activeTranscriptionID = nil
+                }
+            }
+
             do {
                 let outputURLs = try await backend.transcribe(configuration: configuration) { [weak self] state in
+                    guard self?.activeTranscriptionID == transcriptionID else { return }
                     self?.jobState = state
                 }
+                try Task.checkCancellation()
+                guard activeTranscriptionID == transcriptionID else { return }
+
                 let finishedAt = Date()
                 lastOutputURLs = outputURLs
                 lastTranscriptionDuration = max(0, finishedAt.timeIntervalSince(startedAt))
                 currentTranscriptionStartedAt = nil
                 jobState = .succeeded(outputURLs: outputURLs)
                 NSWorkspace.shared.activateFileViewerSelecting(outputURLs)
+            } catch is CancellationError {
+                guard activeTranscriptionID == transcriptionID else { return }
+                markTranscriptionCancelled()
             } catch {
+                guard activeTranscriptionID == transcriptionID else { return }
                 currentTranscriptionStartedAt = nil
                 lastTranscriptionDuration = nil
                 transientErrorMessage = error.localizedDescription
                 jobState = .failed(message: error.localizedDescription)
             }
-            outputAccess.invalidate()
         }
     }
 
     func cancelTranscription() {
+        guard jobState.isBusy else { return }
+        activeTranscriptionID = nil
+        transcriptionTask?.cancel()
+        transcriptionTask = nil
         backend.cancelCurrentWork()
+        markTranscriptionCancelled()
+    }
+
+    private func markTranscriptionCancelled() {
         currentTranscriptionStartedAt = nil
         lastTranscriptionDuration = nil
         jobState = .failed(message: "The transcription was cancelled.")
@@ -359,6 +391,7 @@ final class AppState: ObservableObject {
     }
 
     func installModel(_ modelID: String) {
+        let previousSelectedModelID = selectedModelID
         selectedModelID = modelID
         updateModel(modelID) {
             $0.installState = .installing(progress: nil, bytesReceived: nil, totalBytes: nil)
@@ -385,6 +418,13 @@ final class AppState: ObservableObject {
             } catch {
                 updateModel(modelID) {
                     $0.installState = .failed(message: error.localizedDescription)
+                }
+                if selectedModelID == modelID {
+                    selectedModelID = Self.selectionAfterFailedInstall(
+                        failedModelID: modelID,
+                        previousSelection: previousSelectedModelID,
+                        installedModelIDs: Set(installedModels.map(\.id))
+                    )
                 }
                 transientErrorMessage = error.localizedDescription
             }
@@ -550,6 +590,18 @@ final class AppState: ObservableObject {
         default:
             return nil
         }
+    }
+
+    nonisolated static func selectionAfterFailedInstall(
+        failedModelID: String,
+        previousSelection: String,
+        installedModelIDs: Set<String>
+    ) -> String {
+        if previousSelection != failedModelID, installedModelIDs.contains(previousSelection) {
+            return previousSelection
+        }
+
+        return installedModelIDs.sorted().first ?? failedModelID
     }
 
     private func preserveModelStates(with refreshed: [WhisperModelInfo]) {

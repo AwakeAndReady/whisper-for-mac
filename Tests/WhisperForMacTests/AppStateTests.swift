@@ -54,6 +54,28 @@ func coreMLTransientStatesPersistOnlyWhileUnderlyingAssetStateMatches() {
     #expect(unavailable == nil)
 }
 
+@Test
+func failedInstallRestoresPreviousInstalledSelection() {
+    let selection = AppState.selectionAfterFailedInstall(
+        failedModelID: "small",
+        previousSelection: "base",
+        installedModelIDs: ["base", "tiny"]
+    )
+
+    #expect(selection == "base")
+}
+
+@Test
+func failedInstallFallsBackWhenPreviousSelectionIsUnavailable() {
+    let selection = AppState.selectionAfterFailedInstall(
+        failedModelID: "small",
+        previousSelection: "base",
+        installedModelIDs: ["tiny"]
+    )
+
+    #expect(selection == "tiny")
+}
+
 @MainActor
 @Test
 func homeStateFollowsSetupReadyAndCompletedFlow() {

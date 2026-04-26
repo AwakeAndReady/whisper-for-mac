@@ -9,7 +9,7 @@ enum OutputDirectoryResolver {
 
         switch preferences.outputLocationMode {
         case .nextToSource:
-            return preferences.customOutputDirectory ?? FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first ?? inputURL.deletingLastPathComponent().appendingPathComponent("Whisper Output", isDirectory: true)
+            return inputURL.deletingLastPathComponent()
         case .custom:
             return preferences.customOutputDirectory ?? FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first ?? inputURL.deletingLastPathComponent().appendingPathComponent("Whisper Output", isDirectory: true)
         }

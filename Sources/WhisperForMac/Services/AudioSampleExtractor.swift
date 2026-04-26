@@ -52,6 +52,11 @@ struct AudioSampleExtractor {
         var samples: [Float] = []
 
         while let sampleBuffer = output.copyNextSampleBuffer() {
+            if Task.isCancelled {
+                reader.cancelReading()
+                throw CancellationError()
+            }
+
             guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else { continue }
             let dataLength = CMBlockBufferGetDataLength(blockBuffer)
             var data = Data(count: dataLength)

@@ -22,3 +22,15 @@ func honorsCustomDirectory() async throws {
 
     #expect(resolved.path == "/tmp/custom-output")
 }
+
+@Test
+func nextToSourceUsesInputDirectory() async throws {
+    let input = URL(fileURLWithPath: "/tmp/source-folder/sample.mov")
+    var preferences = AppPreferences.default
+    preferences.outputLocationMode = .nextToSource
+    preferences.customOutputDirectory = URL(fileURLWithPath: "/tmp/custom-output")
+
+    let resolved = OutputDirectoryResolver.resolve(for: input, preferences: preferences)
+
+    #expect(resolved.path == "/tmp/source-folder")
+}

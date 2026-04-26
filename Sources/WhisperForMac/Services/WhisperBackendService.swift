@@ -271,7 +271,9 @@ final class WhisperBackendService {
         }
 
         update(.preparing)
+        try Task.checkCancellation()
         let audioSamples = try await audioExtractor.extractSamples(from: configuration.inputURL)
+        try Task.checkCancellation()
         update(.running(progressText: "Loading \(descriptor.displayName)", fraction: 0.12))
 
         let firstPassSegments = try await transcribeOnce(
@@ -284,6 +286,7 @@ final class WhisperBackendService {
             progressLabel: "Transcribing audio",
             update: update
         )
+        try Task.checkCancellation()
 
         let segments: [WhisperSegment]
         if TranscriptEvaluation.shouldRetryInEnglish(
@@ -302,6 +305,7 @@ final class WhisperBackendService {
                 progressLabel: "Retrying in English",
                 update: update
             )
+            try Task.checkCancellation()
             guard TranscriptEvaluation.hasUsableTranscript(retrySegments) else {
                 throw BackendServiceError.noUsableTranscript
             }
@@ -313,8 +317,10 @@ final class WhisperBackendService {
             segments = firstPassSegments
         }
 
+        try Task.checkCancellation()
         update(.writingOutputs)
         try ensureDirectories()
+        try Task.checkCancellation()
         return try transcriptWriter.write(
             segments: segments,
             formats: configuration.outputFormats,

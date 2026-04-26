@@ -38,7 +38,7 @@ enum PreferencesStore {
 
         return AppPreferences(
             outputFormats: formats.isEmpty ? AppPreferences.default.outputFormats : formats,
-            outputLocationMode: mode == .nextToSource ? .custom : mode,
+            outputLocationMode: mode,
             customOutputDirectory: customURL ?? defaultDesktop,
             customOutputDirectoryBookmark: bookmark,
             useCoreMLAcceleration: defaults.bool(forKey: useCoreMLAccelerationKey)

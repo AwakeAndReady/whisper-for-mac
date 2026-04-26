@@ -1,15 +1,20 @@
 # Whisper for Mac
 
-Whisper for Mac is a native macOS app for local audio and video transcription.
-It runs on your own machine, uses a native `whisper.cpp` backend, and does not require Python or `ffmpeg`.
+Whisper for Mac is a fast, native macOS app for offline speech-to-text using OpenAI’s Whisper models.
+It runs entirely on-device with no Python, no cloud, and no setup required — just download a model and start transcribing.
+
+![Whisper for Mac setup wizard walkthrough](docs/wizard-walkthrough.gif)
 
 ## Features
 
-- Drag and drop audio or video files into a native macOS app
-- Transcribe or translate with downloadable Whisper models
-- Keep processing local without uploading your files
-- Export transcript text (`.txt`) and subtitles (`.vtt`)
-- Use Apple Silicon, Intel, or Universal app builds
+- ⚡ Fast on-device transcription using `whisper.cpp`
+- 🧠 Apple Silicon acceleration (Core ML where available)
+- 🔒 100% offline & private — no data leaves your Mac
+- 🎯 Multiple model support (tiny → large, multilingual + English-only)
+- 🌍 Translation & language detection
+- 📊 Live progress feedback & timestamps
+- 🧵 Optimized multi-threaded inference
+- 🖥️ Clean native macOS UI (SwiftUI)
 
 ## Using Whisper for Mac
 
