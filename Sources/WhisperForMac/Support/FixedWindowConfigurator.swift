@@ -218,7 +218,6 @@ struct FixedWindowConfigurator: NSViewRepresentable {
 
         func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
             [
-                .wizardTrackingSeparator,
                 .flexibleSpace,
                 .wizardSettings,
                 .wizardHelp,
@@ -227,7 +226,6 @@ struct FixedWindowConfigurator: NSViewRepresentable {
 
         func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
             [
-                .wizardTrackingSeparator,
                 .flexibleSpace,
                 .wizardSettings,
                 .wizardHelp,
@@ -240,13 +238,6 @@ struct FixedWindowConfigurator: NSViewRepresentable {
             willBeInsertedIntoToolbar flag: Bool
         ) -> NSToolbarItem? {
             switch itemIdentifier {
-            case .wizardTrackingSeparator:
-                guard let toolbarSplitView else { return nil }
-                return NSTrackingSeparatorToolbarItem(
-                    identifier: itemIdentifier,
-                    splitView: toolbarSplitView,
-                    dividerIndex: 0
-                )
             case .wizardSettings:
                 return toolbarButton(
                     identifier: itemIdentifier,
@@ -328,7 +319,6 @@ private extension NSToolbar.Identifier {
 }
 
 private extension NSToolbarItem.Identifier {
-    static let wizardTrackingSeparator = NSToolbarItem.Identifier("WizardTrackingSeparator")
     static let wizardSettings = NSToolbarItem.Identifier("WizardSettings")
     static let wizardHelp = NSToolbarItem.Identifier("WizardHelp")
 }

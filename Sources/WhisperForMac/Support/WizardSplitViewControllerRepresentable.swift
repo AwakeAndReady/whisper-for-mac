@@ -14,6 +14,7 @@ final class WizardSplitViewController: NSSplitViewController {
         self.sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebarController)
         self.contentItem = NSSplitViewItem(viewController: contentController)
         super.init(nibName: nil, bundle: nil)
+        splitView = WizardSplitView()
     }
 
     @available(*, unavailable)
@@ -50,6 +51,17 @@ private final class TransparentHostingController: NSHostingController<AnyView> {
         super.loadView()
         view.wantsLayer = true
         view.layer?.backgroundColor = NSColor.clear.cgColor
+    }
+}
+
+private final class WizardSplitView: NSSplitView {
+    override var dividerThickness: CGFloat {
+        WizardDividerStyle.pixelWidth(for: window)
+    }
+
+    override func drawDivider(in rect: NSRect) {
+        WizardDividerStyle.color.setFill()
+        rect.fill()
     }
 }
 

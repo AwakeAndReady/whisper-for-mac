@@ -5,6 +5,7 @@ final class WindowTitlebarChromeView: NSView {
     private let sidebarInactiveFillView = NSView()
     private let toolbarFillView = NSView()
     private let dividerView = NSView()
+    private let toolbarBottomDividerView = NSView()
 
     private var sidebarWidth: CGFloat
     private weak var splitView: NSSplitView?
@@ -61,13 +62,19 @@ final class WindowTitlebarChromeView: NSView {
         super.layout()
 
         let rightX = min(bounds.width, max(0, contentStartX))
-        let dividerWidth = Self.dividerWidth(for: window)
+        let dividerWidth = WizardDividerStyle.pixelWidth(for: window)
         let dividerX = min(bounds.width - dividerWidth, max(0, rightX - (dividerWidth / 2)))
 
         sidebarMaterialView.frame = NSRect(x: 0, y: 0, width: rightX, height: bounds.height)
         sidebarInactiveFillView.frame = sidebarMaterialView.frame
         dividerView.frame = NSRect(x: dividerX, y: 0, width: dividerWidth, height: bounds.height)
         toolbarFillView.frame = NSRect(x: rightX, y: 0, width: max(0, bounds.width - rightX), height: bounds.height)
+        toolbarBottomDividerView.frame = NSRect(
+            x: rightX,
+            y: 0,
+            width: max(0, bounds.width - rightX),
+            height: dividerWidth
+        )
     }
 
     func update(sidebarWidth: CGFloat, splitView: NSSplitView?) {
@@ -84,13 +91,14 @@ final class WindowTitlebarChromeView: NSView {
         sidebarMaterialView.blendingMode = .behindWindow
         sidebarMaterialView.state = .followsWindowActiveState
 
-        for view in [sidebarInactiveFillView, toolbarFillView, dividerView] {
+        for view in [sidebarInactiveFillView, toolbarFillView, dividerView, toolbarBottomDividerView] {
             view.wantsLayer = true
         }
 
         addSubview(sidebarMaterialView)
         addSubview(sidebarInactiveFillView)
         addSubview(toolbarFillView)
+        addSubview(toolbarBottomDividerView)
         addSubview(dividerView)
     }
 
@@ -107,7 +115,8 @@ final class WindowTitlebarChromeView: NSView {
         sidebarInactiveFillView.isHidden = isWindowActive
         sidebarInactiveFillView.layer?.backgroundColor = Self.inactiveChrome.cgColor
         toolbarFillView.layer?.backgroundColor = (isWindowActive ? Self.activeToolbarChrome : Self.inactiveChrome).cgColor
-        dividerView.layer?.backgroundColor = Self.titlebarDividerColor.cgColor
+        dividerView.layer?.backgroundColor = WizardDividerStyle.color.cgColor
+        toolbarBottomDividerView.layer?.backgroundColor = WizardDividerStyle.color.cgColor
     }
 
     private var contentStartX: CGFloat {
@@ -137,11 +146,6 @@ final class WindowTitlebarChromeView: NSView {
         blue: 250.0 / 255.0,
         alpha: 1
     )
-    private static let titlebarDividerColor = NSColor.black.withAlphaComponent(0.14)
-
-    private static func dividerWidth(for window: NSWindow?) -> CGFloat {
-        1 / (window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2)
-    }
 }
 
 extension NSUserInterfaceItemIdentifier {
