@@ -500,6 +500,7 @@ struct MainView: View {
         .padding(.trailing, -14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .buttonStyle(.plain)
+        .focusEffectDisabled()
         .disabled(!canAccess(step))
     }
 

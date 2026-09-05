@@ -58,6 +58,11 @@ final class WindowTitlebarChromeView: NSView {
         updateAppearance()
     }
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateAppearance()
+    }
+
     override func layout() {
         super.layout()
 
@@ -113,10 +118,12 @@ final class WindowTitlebarChromeView: NSView {
         sidebarMaterialView.state = .followsWindowActiveState
         sidebarMaterialView.isHidden = !isWindowActive
         sidebarInactiveFillView.isHidden = isWindowActive
-        sidebarInactiveFillView.layer?.backgroundColor = Self.inactiveChrome.cgColor
-        toolbarFillView.layer?.backgroundColor = (isWindowActive ? Self.activeToolbarChrome : Self.inactiveChrome).cgColor
-        dividerView.layer?.backgroundColor = WizardDividerStyle.color.cgColor
-        toolbarBottomDividerView.layer?.backgroundColor = WizardDividerStyle.color.cgColor
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            sidebarInactiveFillView.layer?.backgroundColor = Self.inactiveChrome.cgColor
+            toolbarFillView.layer?.backgroundColor = (isWindowActive ? Self.activeToolbarChrome : Self.inactiveChrome).cgColor
+            dividerView.layer?.backgroundColor = WizardDividerStyle.color.cgColor
+            toolbarBottomDividerView.layer?.backgroundColor = WizardDividerStyle.color.cgColor
+        }
     }
 
     private var contentStartX: CGFloat {
@@ -134,18 +141,8 @@ final class WindowTitlebarChromeView: NSView {
         return convert(dividerTrailingEdgeInWindow, from: nil).x
     }
 
-    private static let inactiveChrome = NSColor(
-        srgbRed: 228.0 / 255.0,
-        green: 228.0 / 255.0,
-        blue: 235.0 / 255.0,
-        alpha: 1
-    )
-    private static let activeToolbarChrome = NSColor(
-        srgbRed: 246.0 / 255.0,
-        green: 244.0 / 255.0,
-        blue: 250.0 / 255.0,
-        alpha: 1
-    )
+    private static let inactiveChrome = NSColor.windowBackgroundColor
+    private static let activeToolbarChrome = NSColor.windowBackgroundColor
 }
 
 extension NSUserInterfaceItemIdentifier {
