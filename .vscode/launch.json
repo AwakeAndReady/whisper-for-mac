@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:whisper-for-mac}",
+            "name": "Debug WhisperForMac",
+            "target": "WhisperForMac",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug WhisperForMac"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:whisper-for-mac}",
+            "name": "Release WhisperForMac",
+            "target": "WhisperForMac",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release WhisperForMac"
+        }
+    ]
+}
