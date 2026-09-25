@@ -2,6 +2,8 @@ import AppKit
 import SwiftUI
 
 struct FixedWindowConfigurator: NSViewRepresentable {
+    @Environment(\.colorScheme) private var colorScheme
+
     let contentSize: CGSize
     let titlebarHeight: CGFloat
     let sidebarWidth: CGFloat
@@ -72,15 +74,15 @@ struct FixedWindowConfigurator: NSViewRepresentable {
             $0.identifier == .windowTitlebarChrome
         }) as? WindowTitlebarChromeView {
             chromeView.frame = titlebarChromeFrame(in: titlebarContainer)
-            chromeView.update(sidebarWidth: sidebarWidth, splitView: splitView)
+            chromeView.update(sidebarWidth: sidebarWidth, splitView: splitView, colorScheme: colorScheme)
             positionChromeView(chromeView, in: titlebarContainer)
             return
         }
 
-        let chromeView = WindowTitlebarChromeView(sidebarWidth: sidebarWidth)
+        let chromeView = WindowTitlebarChromeView(sidebarWidth: sidebarWidth, colorScheme: colorScheme)
         chromeView.identifier = .windowTitlebarChrome
         chromeView.frame = titlebarChromeFrame(in: titlebarContainer)
-        chromeView.update(sidebarWidth: sidebarWidth, splitView: splitView)
+        chromeView.update(sidebarWidth: sidebarWidth, splitView: splitView, colorScheme: colorScheme)
         positionChromeView(chromeView, in: titlebarContainer)
     }
 

@@ -13,27 +13,35 @@ struct JobProgressSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            switch appState.jobState {
-            case .idle, .awaitingConfirmation:
-                idleState
-            case .preparing:
-                runningState(title: "Preparing the backend", detail: "Checking the model and extracting audio samples.")
-            case let .running(text, fraction):
+            if appState.isCancellationPending {
                 runningState(
-                    title: "Transcribing audio",
-                    detail: text,
-                    fraction: displayedFraction(fallingBackTo: fraction)
+                    title: "Cancelling transcription",
+                    detail: "Waiting for the current operation to stop.",
+                    showsCancelButton: false
                 )
-            case .writingOutputs:
-                runningState(
-                    title: "Writing output files",
-                    detail: "Saving the transcript and subtitle files to disk.",
-                    fraction: displayedFraction(fallingBackTo: 0.95)
-                )
-            case .succeeded:
-                successState
-            case let .failed(message):
-                errorState(message: message)
+            } else {
+                switch appState.jobState {
+                case .idle, .awaitingConfirmation:
+                    idleState
+                case .preparing:
+                    runningState(title: "Preparing the backend", detail: "Checking the model and extracting audio samples.")
+                case let .running(text, fraction):
+                    runningState(
+                        title: "Transcribing audio",
+                        detail: text,
+                        fraction: displayedFraction(fallingBackTo: fraction)
+                    )
+                case .writingOutputs:
+                    runningState(
+                        title: "Writing output files",
+                        detail: "Saving the transcript and subtitle files to disk.",
+                        fraction: displayedFraction(fallingBackTo: 0.95)
+                    )
+                case .succeeded:
+                    successState
+                case let .failed(message):
+                    errorState(message: message)
+                }
             }
         }
         .onAppear {
@@ -67,12 +75,11 @@ struct JobProgressSection: View {
             padding: 14,
             cornerRadius: WizardChrome.sectionCornerRadius,
             fillOpacity: 0.66,
-            borderOpacity: 0.14,
-            fillColor: WizardChrome.cardBackground
+            borderOpacity: 0.14
         )
     }
 
-    private func runningState(title: String, detail: String, fraction: Double? = nil) -> some View {
+    private func runningState(title: String, detail: String, fraction: Double? = nil, showsCancelButton: Bool = true) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text(title)
@@ -100,8 +107,10 @@ struct JobProgressSection: View {
                 ProgressView()
             }
 
-            Button("Cancel", role: .destructive) {
-                appState.cancelTranscription()
+            if showsCancelButton {
+                Button("Cancel", role: .destructive) {
+                    appState.cancelTranscription()
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -109,8 +118,7 @@ struct JobProgressSection: View {
             padding: 14,
             cornerRadius: WizardChrome.sectionCornerRadius,
             fillOpacity: 0.66,
-            borderOpacity: 0.14,
-            fillColor: WizardChrome.cardBackground
+            borderOpacity: 0.14
         )
     }
 
@@ -164,7 +172,6 @@ struct JobProgressSection: View {
             cornerRadius: WizardChrome.sectionCornerRadius,
             fillOpacity: 0.66,
             borderOpacity: 0.14,
-            fillColor: WizardChrome.cardBackground,
             tint: Color(nsColor: .systemGreen),
             tintOpacity: 0.035
         )
@@ -218,7 +225,6 @@ struct JobProgressSection: View {
             cornerRadius: WizardChrome.sectionCornerRadius,
             fillOpacity: 0.66,
             borderOpacity: 0.14,
-            fillColor: WizardChrome.cardBackground,
             tint: .orange,
             tintOpacity: 0.04
         )

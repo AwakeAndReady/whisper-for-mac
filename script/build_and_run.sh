@@ -50,6 +50,11 @@ resource_path_for() {
   echo "$bin_dir/${APP_NAME}_${APP_NAME}.resources"
 }
 
+framework_path_for() {
+  local bin_dir="$1"
+  echo "$bin_dir/whisper.framework"
+}
+
 write_info_plist() {
   local info_plist="$1"
 
@@ -101,18 +106,25 @@ stage_bundle() {
   local bundle_path="$1"
   local binary_path="$2"
   local resources_path="$3"
+  local framework_path="$4"
 
   local bundle_contents="$bundle_path/Contents"
   local bundle_macos="$bundle_contents/MacOS"
   local bundle_resources="$bundle_contents/Resources"
+  local bundle_frameworks="$bundle_contents/Frameworks"
 
   rm -rf "$bundle_path"
-  mkdir -p "$bundle_macos" "$bundle_resources"
+  mkdir -p "$bundle_macos" "$bundle_resources" "$bundle_frameworks"
   cp "$binary_path" "$bundle_macos/$APP_NAME"
   chmod +x "$bundle_macos/$APP_NAME"
+  install_name_tool -add_rpath "@executable_path/../Frameworks" "$bundle_macos/$APP_NAME"
 
   if [ -d "$resources_path" ]; then
     cp -R "$resources_path/." "$bundle_resources/"
+  fi
+
+  if [ -d "$framework_path" ]; then
+    cp -R "$framework_path" "$bundle_frameworks/"
   fi
 
   if [ -f "$GENERATED_ICNS" ]; then
@@ -124,6 +136,7 @@ stage_bundle() {
   fi
 
   write_info_plist "$bundle_contents/Info.plist"
+  codesign --force --deep --sign - "$bundle_path" >/dev/null
 }
 
 rm -rf "$DIST_DIR"
@@ -140,12 +153,14 @@ INTEL_BINARY="$INTEL_BIN_DIR/$APP_NAME"
 UNIVERSAL_BINARY="$DIST_DIR/$APP_NAME-universal"
 ARM64_RESOURCES="$(resource_path_for "$ARM64_BIN_DIR")"
 INTEL_RESOURCES="$(resource_path_for "$INTEL_BIN_DIR")"
+ARM64_FRAMEWORK="$(framework_path_for "$ARM64_BIN_DIR")"
+INTEL_FRAMEWORK="$(framework_path_for "$INTEL_BIN_DIR")"
 
 lipo -create "$ARM64_BINARY" "$INTEL_BINARY" -output "$UNIVERSAL_BINARY"
 
-stage_bundle "$ARM64_APP_BUNDLE" "$ARM64_BINARY" "$ARM64_RESOURCES"
-stage_bundle "$INTEL_APP_BUNDLE" "$INTEL_BINARY" "$INTEL_RESOURCES"
-stage_bundle "$UNIVERSAL_APP_BUNDLE" "$UNIVERSAL_BINARY" "$ARM64_RESOURCES"
+stage_bundle "$ARM64_APP_BUNDLE" "$ARM64_BINARY" "$ARM64_RESOURCES" "$ARM64_FRAMEWORK"
+stage_bundle "$INTEL_APP_BUNDLE" "$INTEL_BINARY" "$INTEL_RESOURCES" "$INTEL_FRAMEWORK"
+stage_bundle "$UNIVERSAL_APP_BUNDLE" "$UNIVERSAL_BINARY" "$ARM64_RESOURCES" "$ARM64_FRAMEWORK"
 
 rm -rf "$DEFAULT_APP_BUNDLE"
 cp -R "$UNIVERSAL_APP_BUNDLE" "$DEFAULT_APP_BUNDLE"

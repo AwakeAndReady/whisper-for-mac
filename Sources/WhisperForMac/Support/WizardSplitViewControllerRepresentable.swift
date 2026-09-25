@@ -40,9 +40,10 @@ final class WizardSplitViewController: NSSplitViewController {
         addSplitViewItem(contentItem)
     }
 
-    func update(sidebar: AnyView, content: AnyView) {
+    func update(sidebar: AnyView, content: AnyView, colorScheme: ColorScheme) {
         sidebarController.rootView = sidebar
         contentController.rootView = content
+        (splitView as? WizardSplitView)?.colorScheme = colorScheme
     }
 }
 
@@ -55,17 +56,28 @@ private final class TransparentHostingController: NSHostingController<AnyView> {
 }
 
 private final class WizardSplitView: NSSplitView {
+    var colorScheme: ColorScheme = .light {
+        didSet { needsDisplay = true }
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
+    }
+
     override var dividerThickness: CGFloat {
         WizardDividerStyle.pixelWidth(for: window)
     }
 
     override func drawDivider(in rect: NSRect) {
-        WizardDividerStyle.color.setFill()
+        WizardChrome.resolvedColor(WizardDividerStyle.color, for: colorScheme).setFill()
         rect.fill()
     }
 }
 
 struct WizardSplitViewControllerRepresentable: NSViewControllerRepresentable {
+    @Environment(\.colorScheme) private var colorScheme
+
     let sidebarWidth: CGFloat
     let sidebar: AnyView
     let content: AnyView
@@ -73,11 +85,11 @@ struct WizardSplitViewControllerRepresentable: NSViewControllerRepresentable {
     func makeNSViewController(context: Context) -> WizardSplitViewController {
         let controller = WizardSplitViewController(sidebarWidth: sidebarWidth)
         controller.loadViewIfNeeded()
-        controller.update(sidebar: sidebar, content: content)
+        controller.update(sidebar: sidebar, content: content, colorScheme: colorScheme)
         return controller
     }
 
     func updateNSViewController(_ nsViewController: WizardSplitViewController, context: Context) {
-        nsViewController.update(sidebar: sidebar, content: content)
+        nsViewController.update(sidebar: sidebar, content: content, colorScheme: colorScheme)
     }
 }

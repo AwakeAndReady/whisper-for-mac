@@ -173,8 +173,7 @@ private func blockedState(
         padding: 14,
         cornerRadius: WizardChrome.sectionCornerRadius,
         fillOpacity: 1,
-        borderOpacity: 0.14,
-        fillColor: WizardChrome.cardBackground
+        borderOpacity: 0.14
     )
 }
 
@@ -204,7 +203,6 @@ func optionsSection<Content: View>(
         padding: 16,
         cornerRadius: WizardChrome.sectionCornerRadius,
         fillOpacity: 1,
-        borderOpacity: 0.14,
-        fillColor: WizardChrome.cardBackground
+        borderOpacity: 0.14
     )
 }

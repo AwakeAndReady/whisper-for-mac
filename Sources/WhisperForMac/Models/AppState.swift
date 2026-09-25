@@ -69,6 +69,7 @@ final class AppState: ObservableObject {
     @Published var selectedTask: WhisperTask = .transcribe
     @Published var selectedLanguageCode = "auto"
     @Published var jobState: TranscriptionJobState = .idle
+    @Published private(set) var isCancellationPending = false
     @Published var preferences: AppPreferences = PreferencesStore.load()
     @Published var showFileImporter = false
     @Published var showOutputFolderPicker = false
@@ -83,6 +84,7 @@ final class AppState: ObservableObject {
     private let backend = WhisperBackendService()
     private var transcriptionTask: Task<Void, Never>?
     private var activeTranscriptionID: UUID?
+    private var isShuttingDown = false
 
     var selectedLanguageMode: LanguageMode {
         selectedLanguageCode == "auto" ? .auto : .explicit(code: selectedLanguageCode)
@@ -129,7 +131,13 @@ final class AppState: ObservableObject {
             selectedFileError == nil &&
             backendStatus.engineReady &&
             (selectedModelInfo?.isInstalled ?? false) &&
-            !jobState.isBusy
+            !(selectedModelInfo?.installState.isInstalling ?? false) &&
+            !(selectedModelInfo?.installState.isRemoving ?? false) &&
+            !(selectedModelInfo?.coreMLInstallState.isInstalling ?? false) &&
+            !(selectedModelInfo?.coreMLInstallState.isRemoving ?? false) &&
+            !jobState.isBusy &&
+            transcriptionTask == nil &&
+            !isShuttingDown
     }
 
     var resolvedOutputDirectory: URL? {
@@ -146,7 +154,7 @@ final class AppState: ObservableObject {
     }
 
     var canChooseFile: Bool {
-        backendStatus.engineReady && backendStatus.installedModelsAvailable && !jobState.isBusy
+        backendStatus.engineReady && backendStatus.installedModelsAvailable && !jobState.isBusy && !isShuttingDown
     }
 
     var canReviewOptions: Bool {
@@ -315,9 +323,6 @@ final class AppState: ObservableObject {
             let outputAccess = ensureOutputDirectoryAccess(promptIfNeeded: true, showCancellationError: true)
         else { return }
 
-        transcriptionTask?.cancel()
-        backend.cancelCurrentWork()
-
         let configuration = WhisperJobConfiguration(
             inputURL: selectedFileURL,
             modelID: selectedModelID,
@@ -337,6 +342,7 @@ final class AppState: ObservableObject {
 
         let transcriptionID = UUID()
         activeTranscriptionID = transcriptionID
+        isCancellationPending = false
 
         transcriptionTask = Task { [configuration, outputAccess, startedAt, transcriptionID] in
             defer {
@@ -348,8 +354,9 @@ final class AppState: ObservableObject {
             }
 
             do {
-                let outputURLs = try await backend.transcribe(configuration: configuration) { [weak self] state in
-                    guard self?.activeTranscriptionID == transcriptionID else { return }
+                let outputURLs = try await backend.transcribe(runID: transcriptionID, configuration: configuration) { [weak self] state in
+                    guard self?.activeTranscriptionID == transcriptionID,
+                          self?.isCancellationPending == false else { return }
                     self?.jobState = state
                 }
                 try Task.checkCancellation()
@@ -366,6 +373,10 @@ final class AppState: ObservableObject {
                 markTranscriptionCancelled()
             } catch {
                 guard activeTranscriptionID == transcriptionID else { return }
+                if isCancellationPending {
+                    markTranscriptionCancelled()
+                    return
+                }
                 currentTranscriptionStartedAt = nil
                 lastTranscriptionDuration = nil
                 transientErrorMessage = error.localizedDescription
@@ -375,19 +386,30 @@ final class AppState: ObservableObject {
     }
 
     func cancelTranscription() {
-        guard jobState.isBusy else { return }
-        activeTranscriptionID = nil
+        guard jobState.isBusy, let runID = activeTranscriptionID, !isCancellationPending else { return }
+        isCancellationPending = true
         transcriptionTask?.cancel()
-        transcriptionTask = nil
-        backend.cancelCurrentWork()
-        markTranscriptionCancelled()
+        Task {
+            await backend.cancelCurrentWork(runID: runID)
+        }
     }
 
     private func markTranscriptionCancelled() {
+        isCancellationPending = false
         currentTranscriptionStartedAt = nil
         lastTranscriptionDuration = nil
         jobState = .failed(message: "The transcription was cancelled.")
         wizardStep = .progress
+    }
+
+    func beginShutdown() {
+        isShuttingDown = true
+        cancelTranscription()
+    }
+
+    func finishShutdown() async {
+        await transcriptionTask?.value
+        await backend.shutdown()
     }
 
     func installModel(_ modelID: String) {

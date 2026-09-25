@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 
 final class WindowTitlebarChromeView: NSView {
     private let sidebarMaterialView = NSVisualEffectView()
@@ -8,10 +9,12 @@ final class WindowTitlebarChromeView: NSView {
     private let toolbarBottomDividerView = NSView()
 
     private var sidebarWidth: CGFloat
+    private var colorScheme: ColorScheme
     private weak var splitView: NSSplitView?
 
-    init(sidebarWidth: CGFloat) {
+    init(sidebarWidth: CGFloat, colorScheme: ColorScheme) {
         self.sidebarWidth = sidebarWidth
+        self.colorScheme = colorScheme
         super.init(frame: .zero)
         configureSubviews()
         updateAppearance()
@@ -58,6 +61,11 @@ final class WindowTitlebarChromeView: NSView {
         updateAppearance()
     }
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateAppearance()
+    }
+
     override func layout() {
         super.layout()
 
@@ -77,8 +85,9 @@ final class WindowTitlebarChromeView: NSView {
         )
     }
 
-    func update(sidebarWidth: CGFloat, splitView: NSSplitView?) {
+    func update(sidebarWidth: CGFloat, splitView: NSSplitView?, colorScheme: ColorScheme) {
         self.sidebarWidth = sidebarWidth
+        self.colorScheme = colorScheme
         self.splitView = splitView
         updateAppearance()
         needsLayout = true
@@ -113,10 +122,12 @@ final class WindowTitlebarChromeView: NSView {
         sidebarMaterialView.state = .followsWindowActiveState
         sidebarMaterialView.isHidden = !isWindowActive
         sidebarInactiveFillView.isHidden = isWindowActive
-        sidebarInactiveFillView.layer?.backgroundColor = Self.inactiveChrome.cgColor
-        toolbarFillView.layer?.backgroundColor = (isWindowActive ? Self.activeToolbarChrome : Self.inactiveChrome).cgColor
-        dividerView.layer?.backgroundColor = WizardDividerStyle.color.cgColor
-        toolbarBottomDividerView.layer?.backgroundColor = WizardDividerStyle.color.cgColor
+        let chrome = WizardChrome.resolvedColor(.windowBackgroundColor, for: colorScheme).cgColor
+        let divider = WizardChrome.resolvedColor(WizardDividerStyle.color, for: colorScheme).cgColor
+        sidebarInactiveFillView.layer?.backgroundColor = chrome
+        toolbarFillView.layer?.backgroundColor = chrome
+        dividerView.layer?.backgroundColor = divider
+        toolbarBottomDividerView.layer?.backgroundColor = divider
     }
 
     private var contentStartX: CGFloat {
@@ -134,18 +145,6 @@ final class WindowTitlebarChromeView: NSView {
         return convert(dividerTrailingEdgeInWindow, from: nil).x
     }
 
-    private static let inactiveChrome = NSColor(
-        srgbRed: 228.0 / 255.0,
-        green: 228.0 / 255.0,
-        blue: 235.0 / 255.0,
-        alpha: 1
-    )
-    private static let activeToolbarChrome = NSColor(
-        srgbRed: 246.0 / 255.0,
-        green: 244.0 / 255.0,
-        blue: 250.0 / 255.0,
-        alpha: 1
-    )
 }
 
 extension NSUserInterfaceItemIdentifier {

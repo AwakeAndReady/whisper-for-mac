@@ -31,6 +31,7 @@ struct WhisperForMacApp: App {
                     )
                 }
                 .task {
+                    appDelegate.appState = appState
                     await appState.initialize()
                 }
         }
@@ -47,9 +48,26 @@ struct WhisperForMacApp: App {
     }
 }
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    weak var appState: AppState?
+    private var terminationTask: Task<Void, Never>?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let appState else { return .terminateNow }
+        guard terminationTask == nil else { return .terminateLater }
+
+        appState.beginShutdown()
+        terminationTask = Task {
+            await appState.finishShutdown()
+            sender.reply(toApplicationShouldTerminate: true)
+            terminationTask = nil
+        }
+        return .terminateLater
     }
 }

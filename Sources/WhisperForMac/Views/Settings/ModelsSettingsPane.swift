@@ -123,6 +123,7 @@ struct ModelsSettingsPane: View {
             }
         }
         .frame(width: 270, alignment: .trailing)
+        .disabled(appState.jobState.isBusy)
     }
 
     private func coreMLInstallActivityIndicator(for model: WhisperModelInfo) -> some View {

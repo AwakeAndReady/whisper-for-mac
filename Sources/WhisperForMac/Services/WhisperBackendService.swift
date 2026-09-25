@@ -137,7 +137,7 @@ final class WhisperBackendService {
             return BackendSnapshot(
                 status: BackendStatus(
                     engineReady: true,
-                    engineVersion: "Embedded whisper.cpp engine",
+                    engineVersion: "Official whisper.cpp 1.8.6",
                     modelStorePath: paths.modelStorePath,
                     installedModelsAvailable: models.contains(where: \.isInstalled),
                     errorMessage: nil
@@ -176,6 +176,7 @@ final class WhisperBackendService {
                 updateProgress(progress, bytesReceived, totalBytes)
             }
         }
+        defer { try? FileManager.default.removeItem(at: temporaryURL) }
         if let httpResponse = response as? HTTPURLResponse, !(200 ..< 300).contains(httpResponse.statusCode) {
             throw BackendServiceError.installFailed("Downloading \(descriptor.displayName) failed with status \(httpResponse.statusCode).")
         }
@@ -183,11 +184,12 @@ final class WhisperBackendService {
         let destination = paths.modelsDirectory.appendingPathComponent(descriptor.filename)
         let fileManager = FileManager.default
         try fileManager.createDirectory(at: paths.modelsDirectory, withIntermediateDirectories: true)
-        if fileManager.fileExists(atPath: destination.path) {
-            try fileManager.removeItem(at: destination)
+        try await changeModel(at: destination) {
+            if fileManager.fileExists(atPath: destination.path) {
+                try fileManager.removeItem(at: destination)
+            }
+            try fileManager.moveItem(at: temporaryURL, to: destination)
         }
-
-        try fileManager.moveItem(at: temporaryURL, to: destination)
         update("Installed \(descriptor.displayName)")
     }
 
@@ -217,12 +219,15 @@ final class WhisperBackendService {
                 updateProgress(progress, bytesReceived, totalBytes)
             }
         }
+        defer { try? FileManager.default.removeItem(at: temporaryURL) }
         if let httpResponse = response as? HTTPURLResponse, !(200 ..< 300).contains(httpResponse.statusCode) {
             throw BackendServiceError.installFailed("Downloading the Core ML encoder for \(descriptor.displayName) failed with status \(httpResponse.statusCode).")
         }
 
         update("Installing Core ML encoder for \(descriptor.displayName)")
-        try installCoreMLArchive(temporaryURL, for: descriptor)
+        try await changeModel(at: modelURL) {
+            try installCoreMLArchive(temporaryURL, for: descriptor)
+        }
         update("Installed Core ML encoder for \(descriptor.displayName)")
     }
 
@@ -232,13 +237,15 @@ final class WhisperBackendService {
         }
 
         let destination = paths.modelsDirectory.appendingPathComponent(descriptor.filename)
-        if FileManager.default.fileExists(atPath: destination.path) {
-            try FileManager.default.removeItem(at: destination)
-        }
-
         let coreMLDestination = paths.modelsDirectory.appendingPathComponent(descriptor.coreMLEncoderFilename)
-        if FileManager.default.fileExists(atPath: coreMLDestination.path) {
-            try FileManager.default.removeItem(at: coreMLDestination)
+        try await changeModel(at: destination) {
+            if FileManager.default.fileExists(atPath: destination.path) {
+                try FileManager.default.removeItem(at: destination)
+            }
+            if FileManager.default.fileExists(atPath: coreMLDestination.path) {
+                try FileManager.default.removeItem(at: coreMLDestination)
+            }
+            try WhisperModelLoadPath.removeAlias(for: destination)
         }
 
         update("Removed \(descriptor.displayName)")
@@ -253,14 +260,17 @@ final class WhisperBackendService {
         }
 
         let destination = paths.modelsDirectory.appendingPathComponent(descriptor.coreMLEncoderFilename)
-        if FileManager.default.fileExists(atPath: destination.path) {
-            try FileManager.default.removeItem(at: destination)
+        let modelURL = paths.modelsDirectory.appendingPathComponent(descriptor.filename)
+        try await changeModel(at: modelURL) {
+            if FileManager.default.fileExists(atPath: destination.path) {
+                try FileManager.default.removeItem(at: destination)
+            }
         }
 
         update("Removed Core ML encoder for \(descriptor.displayName)")
     }
 
-    func transcribe(configuration: WhisperJobConfiguration, update: @escaping @MainActor (TranscriptionJobState) -> Void) async throws -> [URL] {
+    func transcribe(runID: UUID, configuration: WhisperJobConfiguration, update: @escaping @MainActor (TranscriptionJobState) -> Void) async throws -> [URL] {
         guard let descriptor = SupportedModels.descriptor(for: configuration.modelID) else {
             throw BackendServiceError.unknownModel
         }
@@ -277,6 +287,7 @@ final class WhisperBackendService {
         update(.running(progressText: "Loading \(descriptor.displayName)", fraction: 0.12))
 
         let firstPassSegments = try await transcribeOnce(
+            runID: runID,
             modelURL: modelURL,
             samples: audioSamples,
             task: configuration.task,
@@ -296,6 +307,7 @@ final class WhisperBackendService {
         ) {
             update(.running(progressText: "Retrying in English", fraction: 0.92))
             let retrySegments = try await transcribeOnce(
+                runID: runID,
                 modelURL: modelURL,
                 samples: audioSamples,
                 task: configuration.task,
@@ -329,10 +341,12 @@ final class WhisperBackendService {
         )
     }
 
-    func cancelCurrentWork() {
-        Task {
-            await engine.cancel()
-        }
+    func cancelCurrentWork(runID: UUID) async {
+        await engine.cancel(runID: runID)
+    }
+
+    func shutdown() async {
+        await engine.shutdown()
     }
 
     private func ensureDirectories() throws {
@@ -448,6 +462,7 @@ final class WhisperBackendService {
     }
 
     private func transcribeOnce(
+        runID: UUID,
         modelURL: URL,
         samples: [Float],
         task: WhisperTask,
@@ -458,6 +473,7 @@ final class WhisperBackendService {
         update: @escaping @MainActor (TranscriptionJobState) -> Void
     ) async throws -> [WhisperSegment] {
         try await engine.transcribe(
+            runID: runID,
             modelURL: modelURL,
             samples: samples,
             task: task,
@@ -526,6 +542,17 @@ final class WhisperBackendService {
             try fileManager.removeItem(at: destination)
         }
         try fileManager.moveItem(at: extractedEncoder, to: destination)
+    }
+
+    private func changeModel(at modelURL: URL, _ operation: () throws -> Void) async throws {
+        try await engine.beginModelChange(modelURL: modelURL)
+        do {
+            try operation()
+        } catch {
+            await engine.endModelChange(modelURL: modelURL)
+            throw error
+        }
+        await engine.endModelChange(modelURL: modelURL)
     }
 
     private func extractedCoreMLEncoder(in root: URL, expectedFilename: String) -> URL? {

@@ -2,6 +2,13 @@ import Testing
 @testable import WhisperForMac
 
 @Test
+func transcriptionEngineBuildIncludesMetalAcceleration() {
+    #expect(WhisperEngineConfiguration.useGPU)
+    #expect(WhisperEngineConfiguration.useFlashAttention)
+    #expect(WhisperEngineConfiguration.isMetalCompiled)
+}
+
+@Test
 func modelCatalogUsesWhisperCppDownloads() async throws {
     let descriptor = try #require(SupportedModels.descriptor(for: "base.en"))
 

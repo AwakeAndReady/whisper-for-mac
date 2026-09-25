@@ -1,19 +1,50 @@
 import AppKit
 import SwiftUI
 
+@MainActor
 enum WizardChrome {
-    static let panelCornerRadius: CGFloat = 18
-    static let sectionCornerRadius: CGFloat = 14
-    static let appBackground = Color(.sRGB, red: 239.0 / 255.0, green: 235.0 / 255.0, blue: 236.0 / 255.0, opacity: 0.84)
-    static let cardBackground = Color(.sRGB, red: 1, green: 1, blue: 1, opacity: 0.96)
-    static let cardHeaderBackground = Color(.sRGB, red: 242.0 / 255.0, green: 238.0 / 255.0, blue: 239.0 / 255.0, opacity: 0.98)
-    static let controlBackground = Color(.sRGB, red: 239.0 / 255.0, green: 236.0 / 255.0, blue: 240.0 / 255.0, opacity: 1)
-    static let inactiveChrome = Color(.sRGB, red: 228.0 / 255.0, green: 228.0 / 255.0, blue: 235.0 / 255.0, opacity: 1)
-    static let activeToolbarChrome = Color(.sRGB, red: 246.0 / 255.0, green: 244.0 / 255.0, blue: 250.0 / 255.0, opacity: 1)
-    static let activeSidebarTint = Color(.sRGB, red: 233.0 / 255.0, green: 232.0 / 255.0, blue: 237.0 / 255.0, opacity: 1)
+    nonisolated static let panelCornerRadius: CGFloat = 18
+    nonisolated static let sectionCornerRadius: CGFloat = 14
+
+    @MainActor
+    struct Palette {
+        let appBackground: Color
+        let cardBackground: Color
+        let controlBackground: Color
+        let inactiveChrome: Color
+        let separator: Color
+
+        init(colorScheme: ColorScheme) {
+            appBackground = Color(nsColor: WizardChrome.resolvedColor(.windowBackgroundColor, for: colorScheme)).opacity(0.84)
+            cardBackground = Color(nsColor: WizardChrome.resolvedColor(.controlBackgroundColor, for: colorScheme)).opacity(0.96)
+            controlBackground = Color(nsColor: WizardChrome.resolvedColor(.controlBackgroundColor, for: colorScheme))
+            inactiveChrome = Color(nsColor: WizardChrome.resolvedColor(.windowBackgroundColor, for: colorScheme))
+            separator = Color(nsColor: WizardChrome.resolvedColor(.separatorColor, for: colorScheme))
+        }
+    }
+
+    private static let lightPalette = Palette(colorScheme: .light)
+    private static let darkPalette = Palette(colorScheme: .dark)
+
+    static func palette(for colorScheme: ColorScheme) -> Palette {
+        colorScheme == .dark ? darkPalette : lightPalette
+    }
+
+    static func resolvedColor(_ color: NSColor, for colorScheme: ColorScheme) -> NSColor {
+        guard let appearance = NSAppearance(named: colorScheme == .dark ? .darkAqua : .aqua) else {
+            return color
+        }
+        var resolved = color
+        appearance.performAsCurrentDrawingAppearance {
+            resolved = color.usingColorSpace(.deviceRGB) ?? color
+        }
+        return resolved
+    }
 }
 
 private struct WhisperSurfaceModifier: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+
     let padding: CGFloat
     let cornerRadius: CGFloat
     let fillOpacity: CGFloat
@@ -23,11 +54,12 @@ private struct WhisperSurfaceModifier: ViewModifier {
     let tintOpacity: CGFloat
 
     func body(content: Content) -> some View {
+        let palette = WizardChrome.palette(for: colorScheme)
         content
             .padding(padding)
             .background {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill((fillColor ?? Color(nsColor: .controlBackgroundColor)).opacity(fillOpacity))
+                    .fill((fillColor ?? palette.cardBackground).opacity(fillOpacity))
                     .overlay {
                         if let tint, tintOpacity > 0 {
                             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -36,18 +68,21 @@ private struct WhisperSurfaceModifier: ViewModifier {
                     }
                     .overlay {
                         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                            .strokeBorder(Color(nsColor: .separatorColor).opacity(borderOpacity), lineWidth: 1)
+                            .strokeBorder(palette.separator.opacity(borderOpacity), lineWidth: 1)
                     }
             }
     }
 }
 
 struct WhisperMenuField<MenuContent: View>: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     let title: String
     var isEnabled: Bool = true
     @ViewBuilder let content: () -> MenuContent
 
     var body: some View {
+        let palette = WizardChrome.palette(for: colorScheme)
         Menu {
             content()
         } label: {
@@ -66,10 +101,10 @@ struct WhisperMenuField<MenuContent: View>: View {
             .padding(.vertical, 7)
             .background {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(WizardChrome.controlBackground)
+                    .fill(palette.controlBackground)
                     .overlay {
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .strokeBorder(Color(nsColor: .separatorColor).opacity(0.10), lineWidth: 1)
+                            .strokeBorder(palette.separator.opacity(0.10), lineWidth: 1)
                     }
             }
         }

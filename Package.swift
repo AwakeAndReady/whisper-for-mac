@@ -12,35 +12,9 @@ let package = Package(
         .executable(name: "WhisperForMac", targets: ["WhisperForMac"]),
     ],
     targets: [
-        .target(
+        .binaryTarget(
             name: "whisper",
-            path: "Vendor/whisper",
-            exclude: [
-                "ggml-metal.m",
-                "ggml-metal.metal",
-                "coreml/whisper-decoder-impl.h",
-                "coreml/whisper-decoder-impl.m",
-            ],
-            sources: [
-                "ggml.c",
-                "ggml-alloc.c",
-                "ggml-backend.c",
-                "ggml-quants.c",
-                "coreml/whisper-encoder-impl.m",
-                "coreml/whisper-encoder.mm",
-                "whisper.cpp",
-            ],
-            publicHeadersPath: "include",
-            cSettings: [
-                .unsafeFlags(["-Wno-shorten-64-to-32"]),
-                .define("GGML_USE_ACCELERATE"),
-                .define("WHISPER_COREML_ALLOW_FALLBACK"),
-                .define("WHISPER_USE_COREML"),
-            ],
-            linkerSettings: [
-                .linkedFramework("Accelerate"),
-                .linkedFramework("CoreML"),
-            ]
+            path: "Vendor/whisper-v1.8.6/whisper.xcframework"
         ),
         .executableTarget(
             name: "WhisperForMac",

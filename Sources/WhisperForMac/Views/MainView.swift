@@ -2,11 +2,14 @@ import SwiftUI
 
 struct MainView: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.colorScheme) private var colorScheme
+    @FocusState private var focusedSidebarStep: WizardStep?
     let isWindowActive: Bool
 
     private let sidebarWidth: CGFloat = 190
     private let contentWidth: CGFloat = 404
     private let windowChromeHeight: CGFloat = 54
+    private var chrome: WizardChrome.Palette { WizardChrome.palette(for: colorScheme) }
 
     var body: some View {
         WizardSplitViewControllerRepresentable(
@@ -18,7 +21,7 @@ struct MainView: View {
         .background {
             Rectangle()
                 .fill(.ultraThinMaterial)
-                .overlay(WizardChrome.appBackground)
+                .overlay(chrome.appBackground)
         }
         .navigationTitle("Whisper for Mac")
         .fileImporter(
@@ -49,7 +52,7 @@ struct MainView: View {
             if isWindowActive {
                 Color.clear
             } else {
-                WizardChrome.inactiveChrome
+                chrome.inactiveChrome
             }
         }
     }
@@ -63,7 +66,7 @@ struct MainView: View {
         .padding(.top, 16)
         .padding(.bottom, 18)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(WizardChrome.cardBackground)
+        .background(chrome.cardBackground)
     }
 
     @ViewBuilder
@@ -352,7 +355,6 @@ struct MainView: View {
             cornerRadius: WizardChrome.sectionCornerRadius,
             fillOpacity: 1,
             borderOpacity: 0.14,
-            fillColor: WizardChrome.cardBackground,
             tint: .accentColor,
             tintOpacity: 0.03
         )
@@ -438,8 +440,7 @@ struct MainView: View {
             padding: 14,
             cornerRadius: WizardChrome.sectionCornerRadius,
             fillOpacity: 1,
-            borderOpacity: 0.14,
-            fillColor: WizardChrome.cardBackground
+            borderOpacity: 0.14
         )
     }
 
@@ -457,8 +458,7 @@ struct MainView: View {
             padding: 14,
             cornerRadius: WizardChrome.sectionCornerRadius,
             fillOpacity: 1,
-            borderOpacity: 0.14,
-            fillColor: WizardChrome.cardBackground
+            borderOpacity: 0.14
         )
     }
 
@@ -488,6 +488,12 @@ struct MainView: View {
                 .padding(.vertical, 9)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(step == appState.wizardStep ? Color.primary.opacity(0.10) : Color.clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay {
+                    if focusedSidebarStep == step {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(Color.accentColor, lineWidth: 2)
+                    }
+                }
                 .foregroundStyle(canAccess(step) ? (step == appState.wizardStep ? Color.primary : .primary) : .secondary)
                 .opacity(canAccess(step) ? 1 : 0.46)
                 .padding(.leading, 14)
@@ -500,6 +506,7 @@ struct MainView: View {
         .padding(.trailing, -14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .buttonStyle(.plain)
+        .focused($focusedSidebarStep, equals: step)
         .disabled(!canAccess(step))
     }
 
@@ -508,6 +515,7 @@ struct MainView: View {
     }
 
     private var sidebarProgressFraction: Double? {
+        guard !appState.isCancellationPending else { return nil }
         guard case let .running(_, fraction) = appState.jobState, let fraction else {
             return nil
         }
@@ -516,6 +524,7 @@ struct MainView: View {
     }
 
     private var shouldShowIndeterminateSidebarProgress: Bool {
+        if appState.isCancellationPending { return true }
         switch appState.jobState {
         case .preparing, .writingOutputs:
             return true

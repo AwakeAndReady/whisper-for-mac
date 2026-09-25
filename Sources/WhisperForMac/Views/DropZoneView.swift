@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct DropZoneView: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     let onSelectFile: () -> Void
     let onDropFile: (URL) -> Void
 
@@ -29,11 +31,11 @@ struct DropZoneView: View {
         .padding(.horizontal, 22)
         .background {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(WizardChrome.controlBackground.opacity(isTargeted ? 1 : 0.96))
+                .fill(WizardChrome.palette(for: colorScheme).controlBackground.opacity(isTargeted ? 1 : 0.96))
                 .overlay {
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .strokeBorder(
-                            isTargeted ? Color.accentColor.opacity(0.7) : Color(nsColor: .separatorColor).opacity(0.32),
+                            isTargeted ? Color.accentColor.opacity(0.7) : WizardChrome.palette(for: colorScheme).separator.opacity(0.32),
                             style: StrokeStyle(lineWidth: 1, dash: [6, 6])
                         )
                 }
