@@ -3,6 +3,8 @@
 Whisper for Mac is a fast, native macOS app for offline speech-to-text using OpenAI’s Whisper models.
 It runs entirely on-device with no Python, no cloud, and no setup required — just download a model and start transcribing.
 
+[Download the latest macOS release](https://github.com/AwakeAndReady/whisper-for-mac/releases/latest)
+
 ![Whisper for Mac setup wizard walkthrough](docs/wizard-walkthrough.gif)
 
 ## Features
@@ -15,6 +17,7 @@ It runs entirely on-device with no Python, no cloud, and no setup required — j
 - 📊 Live progress feedback & timestamps
 - 🧵 Optimized multi-threaded inference
 - 🖥️ Clean native macOS UI (SwiftUI)
+- 🌗 Automatic Light and Dark Mode that follows your macOS appearance
 
 ## Using Whisper for Mac
 
@@ -32,7 +35,9 @@ It runs entirely on-device with no Python, no cloud, and no setup required — j
 
 ## Installation
 
-Right now, the main path is building the app locally from this repository:
+Download the Universal app ZIP from the [latest GitHub Release](https://github.com/AwakeAndReady/whisper-for-mac/releases/latest). Unzip it and move `WhisperForMac.app` to Applications. Releases are signed ad hoc and are not notarized; if macOS blocks the first launch, try opening the app, then use **System Settings → Privacy & Security → Open Anyway** if you trust this download.
+
+Alternatively, build the app locally from this repository:
 
 ```bash
 git clone https://github.com/AwakeAndReady/whisper-for-mac.git
@@ -47,6 +52,8 @@ The build script creates app bundles in `dist/`:
 - `WhisperForMac-Intel.app`
 
 A built `.app` can also be shared directly with another user.
+
+To publish a release, push a tag such as `v0.1.0`. The [release workflow](.github/workflows/release.yml) builds and checks a Universal app, then uploads its ZIP to GitHub Releases. GitHub Actions must be enabled for this repository.
 
 ## Development
 

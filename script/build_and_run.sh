@@ -4,6 +4,8 @@ set -euo pipefail
 MODE="${1:-run}"
 APP_NAME="WhisperForMac"
 BUNDLE_ID="com.rene.whisperformac"
+APP_VERSION="${APP_VERSION:-0.1.0}"
+BUILD_CONFIGURATION="${BUILD_CONFIGURATION:-debug}"
 MIN_SYSTEM_VERSION="15.0"
 ARM64_TRIPLE="arm64-apple-macosx15.0"
 INTEL_TRIPLE="x86_64-apple-macosx15.0"
@@ -24,13 +26,29 @@ UNIVERSAL_APP_BUNDLE="$DIST_DIR/${APP_NAME}-Universal.app"
 DEFAULT_APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 APP_BINARY="$DEFAULT_APP_BUNDLE/Contents/MacOS/$APP_NAME"
 
-pkill -x "$APP_NAME" >/dev/null 2>&1 || true
+case "$BUILD_CONFIGURATION" in
+  debug|release) ;;
+  *)
+    echo "BUILD_CONFIGURATION must be debug or release" >&2
+    exit 2
+    ;;
+esac
+
+if [[ ! "$APP_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "APP_VERSION must have the form major.minor.patch" >&2
+  exit 2
+fi
+
+if [ "$MODE" != "build" ] && [ "$MODE" != "--build" ]; then
+  pkill -x "$APP_NAME" >/dev/null 2>&1 || true
+fi
 
 build_arch() {
   local scratch_path="$1"
   local triple="$2"
 
   swift build \
+    --configuration "$BUILD_CONFIGURATION" \
     --scratch-path "$scratch_path" \
     --triple "$triple"
 }
@@ -40,6 +58,7 @@ bin_path_for() {
   local triple="$2"
 
   swift build \
+    --configuration "$BUILD_CONFIGURATION" \
     --scratch-path "$scratch_path" \
     --triple "$triple" \
     --show-bin-path
@@ -73,6 +92,10 @@ write_info_plist() {
   <string>AppIcon</string>
   <key>CFBundleName</key>
   <string>$APP_NAME</string>
+  <key>CFBundleShortVersionString</key>
+  <string>$APP_VERSION</string>
+  <key>CFBundleVersion</key>
+  <string>$APP_VERSION</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>LSMinimumSystemVersion</key>
@@ -171,6 +194,8 @@ open_app() {
 }
 
 case "$MODE" in
+  build|--build)
+    ;;
   run)
     open_app
     ;;
@@ -191,7 +216,7 @@ case "$MODE" in
     pgrep -x "$APP_NAME" >/dev/null
     ;;
   *)
-    echo "usage: $0 [run|--debug|--logs|--telemetry|--verify]" >&2
+    echo "usage: $0 [build|run|--debug|--logs|--telemetry|--verify]" >&2
     exit 2
     ;;
 esac

@@ -1,0 +1,57 @@
+name: Release macOS app
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-26
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v4
+
+      - name: Validate version tag
+        shell: bash
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Expected a tag like v0.1.0" >&2
+            exit 1
+          fi
+
+      - name: Build Universal app
+        shell: bash
+        env:
+          APP_VERSION: ${{ github.ref_name }}
+          BUILD_CONFIGURATION: release
+        run: |
+          APP_VERSION="${APP_VERSION#v}" ./script/build_and_run.sh build
+
+      - name: Verify and package app
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="dist/WhisperForMac.app"
+          binary="$app/Contents/MacOS/WhisperForMac"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          archs="$(lipo -archs "$binary")"
+          [[ " $archs " == *' arm64 '* && " $archs " == *' x86_64 '* ]]
+          version="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Contents/Info.plist")"
+          [[ "$version" == "${GITHUB_REF_NAME#v}" ]]
+          ditto -c -k --sequesterRsrc --keepParent "$app" "WhisperForMac-${GITHUB_REF_NAME}-macOS-universal.zip"
+
+      - name: Publish GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "WhisperForMac-${GITHUB_REF_NAME}-macOS-universal.zip" \
+            --verify-tag \
+            --generate-notes \
+            --notes "This app is ad hoc signed and is not notarized. If macOS blocks the first launch, follow the installation instructions in the README." \
+            --title "Whisper for Mac ${GITHUB_REF_NAME}"
