@@ -62,6 +62,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let appState else { return .terminateNow }
         guard terminationTask == nil else { return .terminateLater }
 
+        if appState.jobState.isBusy {
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = "Quit Whisper for Mac?"
+            alert.informativeText = "A transcription is still in progress. Quitting will cancel it, and unfinished output may be lost."
+            let keepTranscribingButton = alert.addButton(withTitle: "Keep Transcribing")
+            keepTranscribingButton.keyEquivalent = "\u{1B}"
+            alert.addButton(withTitle: "Quit and Cancel Transcription")
+            guard alert.runModal() == .alertSecondButtonReturn else { return .terminateCancel }
+        }
+
         appState.beginShutdown()
         terminationTask = Task {
             await appState.finishShutdown()

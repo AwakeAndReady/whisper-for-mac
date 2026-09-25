@@ -55,6 +55,10 @@ struct FixedWindowConfigurator: NSViewRepresentable {
         installOrUpdateTitlebarChrome(in: window, splitView: splitView)
         installOrUpdateToolbar(in: window, splitView: splitView, coordinator: coordinator)
         positionWindowButtons(in: window)
+        if let closeButton = window.standardWindowButton(.closeButton) {
+            closeButton.target = coordinator
+            closeButton.action = #selector(Coordinator.requestQuit(_:))
+        }
 
         if splitView == nil, coordinator.shouldRetrySplitViewLookup() {
             DispatchQueue.main.async {
@@ -286,6 +290,11 @@ struct FixedWindowConfigurator: NSViewRepresentable {
         @objc
         private func openHelp() {
             onOpenHelp()
+        }
+
+        @objc
+        func requestQuit(_ sender: Any?) {
+            NSApp.terminate(sender)
         }
 
         @objc
