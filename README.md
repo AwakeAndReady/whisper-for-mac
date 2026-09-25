@@ -35,7 +35,9 @@ It runs entirely on-device with no Python, no cloud, and no setup required — j
 
 ## Installation
 
-Download the Universal app ZIP from the [latest GitHub Release](https://github.com/AwakeAndReady/whisper-for-mac/releases/latest). Unzip it and move `WhisperForMac.app` to Applications. Releases are signed ad hoc and are not notarized; if macOS blocks the first launch, try opening the app, then use **System Settings → Privacy & Security → Open Anyway** if you trust this download.
+Download the Universal app ZIP from the [latest GitHub Release](https://github.com/AwakeAndReady/whisper-for-mac/releases/latest). Unzipping creates a folder with `WhisperForMac.app` and a [README.txt](distribution/README.txt) containing installation steps. Quit any running copy, then move the app from that folder to Applications.
+
+The app is currently distributed without Apple Developer ID signing or notarization. If macOS says it cannot verify the app for malware, click **Done**, then open **System Settings → Privacy & Security → Open Anyway** and confirm **Open**. Only do this if you trust the download from this repository. You may need to repeat the approval for each new download.
 
 Alternatively, build the app locally from this repository:
 

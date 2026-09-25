@@ -42,7 +42,20 @@ jobs:
           [[ " $archs " == *' arm64 '* && " $archs " == *' x86_64 '* ]]
           version="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Contents/Info.plist")"
           [[ "$version" == "${GITHUB_REF_NAME#v}" ]]
-          ditto -c -k --sequesterRsrc --keepParent "$app" "WhisperForMac-${GITHUB_REF_NAME}-macOS-universal.zip"
+          archive="WhisperForMac-${GITHUB_REF_NAME}-macOS-universal.zip"
+          folder="WhisperForMac-${GITHUB_REF_NAME}"
+          staging="$RUNNER_TEMP/$folder"
+          mkdir -p "$staging"
+          ditto "$app" "$staging/WhisperForMac.app"
+          cp distribution/README.txt "$staging/README.txt"
+          codesign --verify --deep --strict "$staging/WhisperForMac.app"
+          ditto -c -k --keepParent "$staging" "$archive"
+          unzip -tq "$archive"
+          unzip -p "$archive" "$folder/README.txt" | cmp - distribution/README.txt
+          extracted="$RUNNER_TEMP/release-verification"
+          mkdir -p "$extracted"
+          ditto -x -k "$archive" "$extracted"
+          codesign --verify --deep --strict "$extracted/$folder/WhisperForMac.app"
 
       - name: Publish GitHub Release
         shell: bash
@@ -53,5 +66,5 @@ jobs:
             "WhisperForMac-${GITHUB_REF_NAME}-macOS-universal.zip" \
             --verify-tag \
             --generate-notes \
-            --notes "This app is ad hoc signed and is not notarized. If macOS blocks the first launch, follow the installation instructions in the README." \
+            --notes "This app is not signed with an Apple Developer ID or notarized. If macOS blocks the first launch, follow README.txt inside the downloaded ZIP." \
             --title "Whisper for Mac ${GITHUB_REF_NAME}"
