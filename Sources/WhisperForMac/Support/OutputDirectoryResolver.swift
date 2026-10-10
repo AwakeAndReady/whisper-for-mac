@@ -2,7 +2,8 @@ import Foundation
 
 enum OutputDirectoryResolver {
     static func resolve(for inputURL: URL, preferences: AppPreferences) -> URL {
-        if let bookmark = preferences.customOutputDirectoryBookmark,
+        if preferences.outputLocationMode == .custom,
+           let bookmark = preferences.customOutputDirectoryBookmark,
            let resolved = try? OutputDirectoryAccess.resolveBookmark(bookmark).url {
             return resolved
         }

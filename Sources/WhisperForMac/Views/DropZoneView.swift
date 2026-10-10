@@ -4,7 +4,7 @@ struct DropZoneView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     let onSelectFile: () -> Void
-    let onDropFile: (URL) -> Void
+    let onDropFiles: ([URL]) -> Bool
 
     @State private var isTargeted = false
 
@@ -14,15 +14,15 @@ struct DropZoneView: View {
                 .font(.system(size: 28, weight: .medium))
                 .foregroundStyle(isTargeted ? Color.accentColor : .secondary)
 
-            Text("Add an audio or video file")
+            Text("Add audio or video files")
                 .font(.title3.weight(.semibold))
 
-            Text("Drag a single local file into the window, or choose one from Finder.")
+            Text("Drag local files into the window, or choose them from Finder. Multiple files run one after another.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
 
-            Button("Choose File", action: onSelectFile)
+            Button("Choose Files", action: onSelectFile)
                 .buttonStyle(.bordered)
                 .keyboardShortcut("o", modifiers: [.command])
         }
@@ -41,9 +41,7 @@ struct DropZoneView: View {
                 }
         }
         .dropDestination(for: URL.self) { urls, _ in
-            guard let first = urls.first else { return false }
-            onDropFile(first)
-            return true
+            onDropFiles(urls)
         } isTargeted: { targeted in
             isTargeted = targeted
         }

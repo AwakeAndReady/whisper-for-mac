@@ -23,6 +23,9 @@ jobs:
             exit 1
           fi
 
+      - name: Run tests
+        run: swift test
+
       - name: Build Universal app
         shell: bash
         env:
@@ -48,10 +51,14 @@ jobs:
           mkdir -p "$staging"
           ditto "$app" "$staging/WhisperForMac.app"
           cp distribution/README.txt "$staging/README.txt"
+          cp LICENSE.md LOGO-LICENSE.md THIRD-PARTY-NOTICES.md "$staging/"
           codesign --verify --deep --strict "$staging/WhisperForMac.app"
           ditto -c -k --keepParent "$staging" "$archive"
           unzip -tq "$archive"
           unzip -p "$archive" "$folder/README.txt" | cmp - distribution/README.txt
+          for notice in LICENSE.md LOGO-LICENSE.md THIRD-PARTY-NOTICES.md; do
+            unzip -p "$archive" "$folder/$notice" | cmp - "$notice"
+          done
           extracted="$RUNNER_TEMP/release-verification"
           mkdir -p "$extracted"
           ditto -x -k "$archive" "$extracted"
@@ -65,6 +72,5 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             "WhisperForMac-${GITHUB_REF_NAME}-macOS-universal.zip" \
             --verify-tag \
-            --generate-notes \
-            --notes "This app is not signed with an Apple Developer ID or notarized. If macOS blocks the first launch, follow README.txt inside the downloaded ZIP." \
+            --notes-file "docs/releases/${GITHUB_REF_NAME}.md" \
             --title "Whisper for Mac ${GITHUB_REF_NAME}"

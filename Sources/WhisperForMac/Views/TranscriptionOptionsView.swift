@@ -128,11 +128,12 @@ struct OutputOptionsView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Toggle("TXT transcript", isOn: binding(for: .txt))
                 Toggle("VTT subtitles", isOn: binding(for: .vtt))
+                Toggle("SRT subtitles", isOn: binding(for: .srt))
 
                 Divider()
 
                 LabeledContent("Save Files To") {
-                    Text(appState.resolvedOutputDirectory?.path ?? "Choose a file first")
+                    Text(appState.outputLocationSummary)
                         .font(.callout)
                         .multilineTextAlignment(.trailing)
                         .foregroundStyle(.secondary)

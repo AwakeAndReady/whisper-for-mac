@@ -270,7 +270,7 @@ final class WhisperBackendService {
         update("Removed Core ML encoder for \(descriptor.displayName)")
     }
 
-    func transcribe(runID: UUID, configuration: WhisperJobConfiguration, update: @escaping @MainActor (TranscriptionJobState) -> Void) async throws -> [URL] {
+    func transcribe(runID: UUID, configuration: WhisperJobConfiguration, update: @escaping @MainActor (TranscriptionJobState) -> Void) async throws -> TranscriptionResult {
         guard let descriptor = SupportedModels.descriptor(for: configuration.modelID) else {
             throw BackendServiceError.unknownModel
         }
@@ -333,12 +333,13 @@ final class WhisperBackendService {
         update(.writingOutputs)
         try ensureDirectories()
         try Task.checkCancellation()
-        return try transcriptWriter.write(
+        let outputURLs = try transcriptWriter.write(
             segments: segments,
             formats: configuration.outputFormats,
             inputURL: configuration.inputURL,
             outputDirectory: configuration.outputDirectoryURL
         )
+        return TranscriptionResult(outputURLs: outputURLs, segments: segments)
     }
 
     func cancelCurrentWork(runID: UUID) async {

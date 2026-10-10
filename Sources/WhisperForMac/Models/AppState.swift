@@ -7,11 +7,13 @@ enum HomeFlowState: Equatable {
     case readyToRun
     case running
     case completed
+    case cancelled
     case error
 }
 
 enum WizardStep: Int, CaseIterable {
     case file
+    case review
     case model
     case language
     case output
@@ -21,6 +23,8 @@ enum WizardStep: Int, CaseIterable {
         switch self {
         case .file:
             return "Choose File"
+        case .review:
+            return "Quick Start"
         case .model:
             return "Install or Choose Model"
         case .language:
@@ -36,6 +40,8 @@ enum WizardStep: Int, CaseIterable {
         switch self {
         case .file:
             return "File"
+        case .review:
+            return "Quick Start"
         case .model:
             return "Model"
         case .language:
@@ -47,6 +53,10 @@ enum WizardStep: Int, CaseIterable {
         }
     }
 }
+
+typealias TranscriptionOperation = @MainActor (
+    UUID, WhisperJobConfiguration, @escaping @MainActor (TranscriptionJobState) -> Void
+) async throws -> TranscriptionResult
 
 @MainActor
 final class AppState: ObservableObject {
@@ -65,26 +75,64 @@ final class AppState: ObservableObject {
         )
     }
     @Published var selectedFileURL: URL?
-    @Published var selectedModelID = SupportedModels.all.first?.id ?? "tiny"
-    @Published var selectedTask: WhisperTask = .transcribe
-    @Published var selectedLanguageCode = "auto"
+    @Published private(set) var queueItems: [TranscriptionQueueItem] = []
+    @Published var selectedModelID: String
+    @Published var selectedTask: WhisperTask
+    @Published var selectedLanguageCode: String
     @Published var jobState: TranscriptionJobState = .idle
     @Published private(set) var isCancellationPending = false
-    @Published var preferences: AppPreferences = PreferencesStore.load()
+    @Published var preferences: AppPreferences
     @Published var showFileImporter = false
     @Published var showOutputFolderPicker = false
     @Published var backendSetupMessage = ""
     @Published var transientErrorMessage: String?
     @Published var lastOutputURLs: [URL] = []
+    @Published var lastTranscriptText = ""
     @Published private(set) var currentTranscriptionStartedAt: Date?
     @Published private(set) var lastTranscriptionDuration: TimeInterval?
     @Published var settingsTab: SettingsTab = .engine
     @Published var wizardStep: WizardStep = .file
 
     private let backend = WhisperBackendService()
+    private let transcriptionOperation: TranscriptionOperation
+    private let completionNotifications = CompletionNotificationService()
+    private let preferencesDefaults: UserDefaults
     private var transcriptionTask: Task<Void, Never>?
     private var activeTranscriptionID: UUID?
+    private var completionNotificationTask: Task<Void, Never>?
     private var isShuttingDown = false
+
+    init(preferencesDefaults: UserDefaults = .standard, transcriptionOperation: TranscriptionOperation? = nil) {
+        let backend = self.backend
+        self.transcriptionOperation = transcriptionOperation ?? { runID, configuration, update in
+            try await backend.transcribe(runID: runID, configuration: configuration, update: update)
+        }
+        self.preferencesDefaults = preferencesDefaults
+        let preferences = PreferencesStore.load(from: preferencesDefaults)
+        self.preferences = preferences
+        selectedModelID = preferences.selectedModelID
+        selectedTask = preferences.selectedTask
+        selectedLanguageCode = preferences.selectedLanguageCode
+    }
+
+    var quickStartConfigurationIssue: String? {
+        guard let model = selectedInstalledModelInfo else {
+            return "Choose an installed model before starting."
+        }
+        if !model.isMultilingual {
+            if selectedTask == .translate {
+                return "Translation requires a multilingual model. Change settings to choose one."
+            }
+            if selectedLanguageCode != "auto" && selectedLanguageCode != "en" {
+                return "This model only supports English. Change the model or spoken language in settings."
+            }
+        }
+        return nil
+    }
+
+    var canQuickStart: Bool {
+        canStartTranscription && quickStartConfigurationIssue == nil
+    }
 
     var selectedLanguageMode: LanguageMode {
         selectedLanguageCode == "auto" ? .auto : .explicit(code: selectedLanguageCode)
@@ -135,6 +183,8 @@ final class AppState: ObservableObject {
             !(selectedModelInfo?.installState.isRemoving ?? false) &&
             !(selectedModelInfo?.coreMLInstallState.isInstalling ?? false) &&
             !(selectedModelInfo?.coreMLInstallState.isRemoving ?? false) &&
+            (!isQueue || queueItems.contains { $0.status != .succeeded }) &&
+            !preferences.outputFormats.isEmpty &&
             !jobState.isBusy &&
             transcriptionTask == nil &&
             !isShuttingDown
@@ -167,7 +217,7 @@ final class AppState: ObservableObject {
             return .readyForFile
         case .model:
             return .setup
-        case .language, .output:
+        case .review, .language, .output:
             return .readyToRun
         case .progress:
             if jobState.isBusy {
@@ -176,6 +226,8 @@ final class AppState: ObservableObject {
             switch jobState {
             case .succeeded:
                 return .completed
+            case .cancelled:
+                return .cancelled
             case .failed:
                 return .error
             case .idle, .awaitingConfirmation, .preparing, .running, .writingOutputs:
@@ -196,6 +248,8 @@ final class AppState: ObservableObject {
             return "Transcription in progress"
         case .completed:
             return "Transcript ready"
+        case .cancelled:
+            return "Transcription cancelled"
         case .error:
             return "Needs attention"
         }
@@ -213,6 +267,8 @@ final class AppState: ObservableObject {
             return jobState.progressDescription
         case .completed:
             return "Your transcript files were written locally and are ready to open."
+        case .cancelled:
+            return "Restart this recording or choose another file."
         case .error:
             return transientErrorMessage ?? jobState.progressDescription
         }
@@ -269,25 +325,65 @@ final class AppState: ObservableObject {
         syncWizardStepToCurrentState()
     }
 
-    func chooseFile(_ url: URL) {
-        guard let error = MediaFileValidator.validate(url) else {
-            resetResultIfNeeded()
-            selectedFileURL = url
-            transientErrorMessage = nil
-            if !jobState.isBusy {
-                jobState = .idle
-            }
-            wizardStep = .model
-            return
-        }
+    var selectedFiles: [URL] {
+        queueItems.isEmpty ? selectedFileURL.map { [$0] } ?? [] : queueItems.map(\.inputURL)
+    }
 
-        selectedFileURL = nil
+    var isQueue: Bool { queueItems.count > 1 }
+    var startButtonTitle: String { isQueue ? "Start Queue" : "Start Transcription" }
+    var outputLocationSummary: String {
+        if preferences.outputLocationMode == .nextToSource && isQueue { return "Next to each source file" }
+        return resolvedOutputDirectory?.path ?? "Unavailable"
+    }
+    var finishedQueueCount: Int { queueItems.filter { $0.status == .succeeded }.count }
+    var failedQueueCount: Int { queueItems.filter { $0.status == .failed }.count }
+    var currentQueuePosition: Int? {
+        queueItems.firstIndex { $0.status == .processing }.map { $0 + 1 }
+    }
+
+    func chooseFile(_ url: URL) {
+        chooseFiles([url])
+    }
+
+    @discardableResult
+    func chooseFiles(_ urls: [URL], appending: Bool = false) -> Bool {
+        guard !jobState.isBusy, transcriptionTask == nil, !isShuttingDown, !urls.isEmpty else { return false }
+        var seen = Set<URL>()
+        let candidates = (appending ? selectedFiles : []) + urls
+        let accepted = candidates.filter {
+            MediaFileValidator.validate($0) == nil && seen.insert($0.standardizedFileURL).inserted
+        }
+        let rejected = urls.filter { MediaFileValidator.validate($0) != nil }
+        resetResultIfNeeded()
+        queueItems = accepted.map { TranscriptionQueueItem(inputURL: $0) }
+        selectedFileURL = accepted.first
         lastOutputURLs = []
+        clearCompletedTranscript()
         currentTranscriptionStartedAt = nil
         lastTranscriptionDuration = nil
-        transientErrorMessage = error
-        jobState = .failed(message: error)
-        wizardStep = .file
+        if accepted.isEmpty {
+            let message = rejected.first.flatMap { MediaFileValidator.validate($0) } ?? "Choose an audio or video file."
+            transientErrorMessage = message
+            jobState = .failed(message: message)
+            wizardStep = .file
+            return false
+        }
+        transientErrorMessage = rejected.isEmpty ? nil : "Skipped \(rejected.count) unsupported file(s)."
+        jobState = .idle
+        autoSelectInstalledModelIfNeeded()
+        wizardStep = selectedInstalledModelInfo == nil ? .model : (isQueue ? .file : .review)
+        return true
+    }
+
+    func removeQueuedFile(_ id: UUID) {
+        guard !jobState.isBusy, transcriptionTask == nil, !isShuttingDown else { return }
+        let remaining = queueItems.filter { $0.id != id }.map(\.inputURL)
+        if remaining.isEmpty {
+            resetForNextFileSelection()
+        } else {
+            chooseFiles(remaining)
+            wizardStep = .file
+        }
     }
 
     func chooseAnotherFile() {
@@ -295,9 +391,12 @@ final class AppState: ObservableObject {
     }
 
     func resetForNextFileSelection() {
+        guard !jobState.isBusy, transcriptionTask == nil else { return }
+        queueItems = []
         selectedFileURL = nil
         transientErrorMessage = nil
         lastOutputURLs = []
+        clearCompletedTranscript()
         currentTranscriptionStartedAt = nil
         lastTranscriptionDuration = nil
         if !jobState.isBusy {
@@ -316,73 +415,175 @@ final class AppState: ObservableObject {
         NSWorkspace.shared.activateFileViewerSelecting(lastOutputURLs)
     }
 
-    func runTranscription() {
-        guard
-            canStartTranscription,
-            let selectedFileURL,
-            let outputAccess = ensureOutputDirectoryAccess(promptIfNeeded: true, showCancellationError: true)
-        else { return }
+    var canCopyTranscript: Bool {
+        guard case .succeeded = jobState else { return false }
+        return !lastTranscriptText.isEmpty
+    }
 
+    @discardableResult
+    func copyTranscript(to pasteboard: NSPasteboard = .general) -> Bool {
+        guard canCopyTranscript else { return false }
+        pasteboard.clearContents()
+        return pasteboard.setString(lastTranscriptText, forType: .string)
+    }
+
+    func prepareCompletionNotifications() {
+        guard preferences.notifyWhenFinished else { return }
+        Task { await completionNotifications.prepareAuthorization() }
+    }
+
+    func setCompletionNotificationsEnabled(_ enabled: Bool) {
+        preferences.notifyWhenFinished = enabled
+        savePreferences()
+        if enabled {
+            prepareCompletionNotifications()
+        } else {
+            completionNotificationTask?.cancel()
+            completionNotificationTask = nil
+        }
+    }
+
+    private func clearCompletedTranscript() {
+        lastTranscriptText = ""
+        completionNotificationTask?.cancel()
+        completionNotificationTask = nil
+    }
+
+    func runTranscription() {
+        guard canStartTranscription, let selectedFileURL else { return }
+        let outputAccess: OutputDirectoryAccessSession?
+        if preferences.outputLocationMode == .custom {
+            guard let access = ensureOutputDirectoryAccess(promptIfNeeded: true, showCancellationError: true) else { return }
+            outputAccess = access
+        } else {
+            outputAccess = nil
+        }
+        if !isQueue { queueItems = [TranscriptionQueueItem(inputURL: selectedFileURL)] }
+        let items = queueItems.filter { $0.status != .succeeded }
+        let queueID = UUID()
         let configuration = WhisperJobConfiguration(
-            inputURL: selectedFileURL,
-            modelID: selectedModelID,
-            task: selectedTask,
-            languageMode: selectedLanguageMode,
-            outputFormats: preferences.outputFormats,
-            outputDirectoryURL: outputAccess.url,
+            inputURL: selectedFileURL, modelID: selectedModelID, task: selectedTask,
+            languageMode: selectedLanguageMode, outputFormats: preferences.outputFormats,
+            outputDirectoryURL: outputAccess?.url ?? selectedFileURL.deletingLastPathComponent(),
             useCoreML: shouldUseCoreMLForSelectedModel
         )
-
-        let startedAt = Date()
+        let usesSourceFolder = preferences.outputLocationMode == .nextToSource
+        let isBatch = isQueue
+        preferences.selectedModelID = configuration.modelID
+        preferences.selectedTask = configuration.task
+        preferences.selectedLanguageCode = configuration.languageMode.runnerArgument
+        savePreferences()
+        clearCompletedTranscript()
+        lastOutputURLs = queueItems.flatMap(\.outputURLs)
+        prepareCompletionNotifications()
+        for item in items { updateQueueItem(item.id) { $0 = TranscriptionQueueItem(inputURL: item.inputURL, id: item.id) } }
         jobState = .preparing
-        currentTranscriptionStartedAt = startedAt
         lastTranscriptionDuration = nil
         transientErrorMessage = nil
         wizardStep = .progress
-
-        let transcriptionID = UUID()
-        activeTranscriptionID = transcriptionID
         isCancellationPending = false
+        let firstRunID = UUID()
+        activeTranscriptionID = firstRunID
+        currentTranscriptionStartedAt = Date()
+        updateQueueItem(items[0].id) { $0.status = .processing }
 
-        transcriptionTask = Task { [configuration, outputAccess, startedAt, transcriptionID] in
+        transcriptionTask = Task { [configuration, outputAccess, items] in
             defer {
-                outputAccess.invalidate()
-                if activeTranscriptionID == transcriptionID {
-                    transcriptionTask = nil
-                    activeTranscriptionID = nil
+                outputAccess?.invalidate()
+                transcriptionTask = nil
+                activeTranscriptionID = nil
+                currentTranscriptionStartedAt = nil
+            }
+            var stopped = false
+            for (index, item) in items.enumerated() {
+                if stopped || Task.isCancelled || isCancellationPending || isShuttingDown {
+                    updateQueueItem(item.id) { $0.status = index == 0 ? .cancelled : .skipped }
+                    stopped = true
+                    continue
+                }
+                let runID = index == 0 ? firstRunID : UUID()
+                activeTranscriptionID = runID
+                let startedAt = Date()
+                currentTranscriptionStartedAt = startedAt
+                jobState = .preparing
+                updateQueueItem(item.id) { $0.status = .processing }
+                var fileConfiguration = configuration
+                fileConfiguration.inputURL = item.inputURL
+                if usesSourceFolder { fileConfiguration.outputDirectoryURL = item.inputURL.deletingLastPathComponent() }
+                let sourceAccess = item.inputURL.startAccessingSecurityScopedResource()
+                do {
+                    let result = try await transcriptionOperation(runID, fileConfiguration) { [weak self] state in
+                        guard self?.activeTranscriptionID == runID, self?.isCancellationPending == false else { return }
+                        self?.jobState = state
+                    }
+                    // A completed write is kept even if Stop was pressed as it finished.
+                    let duration = max(0, Date().timeIntervalSince(startedAt))
+                    updateQueueItem(item.id) {
+                        $0.status = .succeeded
+                        $0.outputURLs = result.outputURLs
+                        $0.transcriptText = result.transcriptText
+                        $0.duration = duration
+                    }
+                    lastOutputURLs = queueItems.flatMap(\.outputURLs)
+                    if !isBatch { lastTranscriptText = result.transcriptText; lastTranscriptionDuration = duration }
+                } catch {
+                    if error is CancellationError || isCancellationPending || Task.isCancelled {
+                        updateQueueItem(item.id) { $0.status = .cancelled }
+                        stopped = true
+                    } else {
+                        updateQueueItem(item.id) { $0.status = .failed; $0.errorMessage = error.localizedDescription }
+                        if !isBatch { transientErrorMessage = error.localizedDescription }
+                    }
+                }
+                if sourceAccess { item.inputURL.stopAccessingSecurityScopedResource() }
+                if stopped || Task.isCancelled || isCancellationPending { stopped = true }
+                if index < items.count - 1 {
+                    // Keep the overall job busy between files and yield to Stop/Quit.
+                    jobState = .preparing
+                    await Task.yield()
                 }
             }
-
-            do {
-                let outputURLs = try await backend.transcribe(runID: transcriptionID, configuration: configuration) { [weak self] state in
-                    guard self?.activeTranscriptionID == transcriptionID,
-                          self?.isCancellationPending == false else { return }
-                    self?.jobState = state
-                }
-                try Task.checkCancellation()
-                guard activeTranscriptionID == transcriptionID else { return }
-
-                let finishedAt = Date()
-                lastOutputURLs = outputURLs
-                lastTranscriptionDuration = max(0, finishedAt.timeIntervalSince(startedAt))
-                currentTranscriptionStartedAt = nil
-                jobState = .succeeded(outputURLs: outputURLs)
-                NSWorkspace.shared.activateFileViewerSelecting(outputURLs)
-            } catch is CancellationError {
-                guard activeTranscriptionID == transcriptionID else { return }
-                markTranscriptionCancelled()
-            } catch {
-                guard activeTranscriptionID == transcriptionID else { return }
-                if isCancellationPending {
-                    markTranscriptionCancelled()
-                    return
-                }
-                currentTranscriptionStartedAt = nil
-                lastTranscriptionDuration = nil
-                transientErrorMessage = error.localizedDescription
-                jobState = .failed(message: error.localizedDescription)
+            currentTranscriptionStartedAt = nil
+            isCancellationPending = false
+            if stopped || Task.isCancelled {
+                jobState = .cancelled
+                if !isBatch { lastTranscriptionDuration = nil; lastTranscriptText = "" }
+                return
             }
+            if finishedQueueCount > 0 {
+                jobState = .succeeded(outputURLs: lastOutputURLs)
+            } else {
+                let message = queueItems.first(where: { $0.status == .failed })?.errorMessage ?? "No files were transcribed."
+                jobState = .failed(message: message)
+            }
+            if preferences.notifyWhenFinished && !isShuttingDown && !CompletionNotificationService.isAppInForeground {
+                if isBatch {
+                    let completed = finishedQueueCount
+                    let failed = failedQueueCount
+                    completionNotificationTask = Task {
+                        await completionNotifications.notifyQueueFinished(completed: completed, failed: failed, runID: queueID)
+                    }
+                } else if finishedQueueCount > 0 {
+                    completionNotificationTask = Task {
+                        await completionNotifications.notifyFinished(inputURL: configuration.inputURL, runID: queueID)
+                    }
+                }
+            }
+            if preferences.revealOutputsWhenFinished && !lastOutputURLs.isEmpty { revealOutputsInFinder() }
         }
+    }
+
+    private func updateQueueItem(_ id: UUID, mutate: (inout TranscriptionQueueItem) -> Void) {
+        guard let index = queueItems.firstIndex(where: { $0.id == id }) else { return }
+        mutate(&queueItems[index])
+    }
+
+    @discardableResult
+    func copyQueueTranscript(_ id: UUID, to pasteboard: NSPasteboard = .general) -> Bool {
+        guard let item = queueItems.first(where: { $0.id == id }), item.status == .succeeded,
+              !item.transcriptText.isEmpty else { return false }
+        pasteboard.clearContents()
+        return pasteboard.setString(item.transcriptText, forType: .string)
     }
 
     func cancelTranscription() {
@@ -394,16 +595,9 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func markTranscriptionCancelled() {
-        isCancellationPending = false
-        currentTranscriptionStartedAt = nil
-        lastTranscriptionDuration = nil
-        jobState = .failed(message: "The transcription was cancelled.")
-        wizardStep = .progress
-    }
-
     func beginShutdown() {
         isShuttingDown = true
+        completionNotificationTask?.cancel()
         cancelTranscription()
     }
 
@@ -526,7 +720,7 @@ final class AppState: ObservableObject {
     }
 
     func savePreferences() {
-        PreferencesStore.save(preferences)
+        PreferencesStore.save(preferences, to: preferencesDefaults)
     }
 
     func presentSettings(tab: SettingsTab) {
@@ -661,17 +855,18 @@ final class AppState: ObservableObject {
             wizardStep = .progress
         } else if selectedFileURL == nil {
             wizardStep = .file
-        } else if !backendStatus.installedModelsAvailable {
+        } else if selectedInstalledModelInfo == nil {
             wizardStep = .model
-        } else {
-            wizardStep = .language
+        } else if wizardStep == .file || wizardStep == .model {
+            wizardStep = .review
         }
     }
 
     private func resetResultIfNeeded() {
         switch jobState {
-        case .succeeded, .failed:
+        case .succeeded, .cancelled, .failed:
             lastOutputURLs = []
+            clearCompletedTranscript()
             currentTranscriptionStartedAt = nil
             lastTranscriptionDuration = nil
             jobState = .idle

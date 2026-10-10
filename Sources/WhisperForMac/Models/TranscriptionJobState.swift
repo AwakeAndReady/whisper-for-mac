@@ -7,20 +7,21 @@ enum TranscriptionJobState: Equatable {
     case running(progressText: String, fraction: Double?)
     case writingOutputs
     case succeeded(outputURLs: [URL])
+    case cancelled
     case failed(message: String)
 
     var isBusy: Bool {
         switch self {
         case .preparing, .running, .writingOutputs:
             return true
-        case .idle, .awaitingConfirmation, .succeeded, .failed:
+        case .idle, .awaitingConfirmation, .succeeded, .cancelled, .failed:
             return false
         }
     }
 
     var isTerminal: Bool {
         switch self {
-        case .succeeded, .failed:
+        case .succeeded, .cancelled, .failed:
             return true
         case .idle, .awaitingConfirmation, .preparing, .running, .writingOutputs:
             return false
@@ -41,6 +42,8 @@ enum TranscriptionJobState: Equatable {
             return "Writing transcript files"
         case .succeeded:
             return "Completed"
+        case .cancelled:
+            return "Transcription cancelled"
         case let .failed(message):
             return message
         }

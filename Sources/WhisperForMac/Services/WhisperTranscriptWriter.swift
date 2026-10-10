@@ -19,21 +19,21 @@ struct WhisperTranscriptWriter {
         var contents: [(format: OutputFormat, data: Data)] = []
 
         if formats.contains(.txt) {
-            let content = cleanedSegments.map(\.text).joined(separator: "\n")
+            let content = TranscriptEvaluation.plainText(from: cleanedSegments)
             contents.append((.txt, Data(content.utf8)))
         }
 
-        if formats.contains(.vtt) {
+        for format in [OutputFormat.vtt, .srt] where formats.contains(format) {
             let body = cleanedSegments.enumerated().map { index, segment in
                 """
                 \(index + 1)
-                \(timestampString(for: segment.startTimestamp, comma: false)) --> \(timestampString(for: segment.endTimestamp, comma: false))
+                \(timestampString(for: segment.startTimestamp, comma: format == .srt)) --> \(timestampString(for: segment.endTimestamp, comma: format == .srt))
                 \(segment.text)
                 """
             }.joined(separator: "\n\n")
 
-            let content = "WEBVTT\n\n\(body)\n"
-            contents.append((.vtt, Data(content.utf8)))
+            let content = format == .vtt ? "WEBVTT\n\n\(body)\n" : "\(body)\n\n"
+            contents.append((format, Data(content.utf8)))
         }
 
         guard !contents.isEmpty else { return [] }

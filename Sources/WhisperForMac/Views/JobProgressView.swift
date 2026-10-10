@@ -39,6 +39,8 @@ struct JobProgressSection: View {
                     )
                 case .succeeded:
                     successState
+                case .cancelled:
+                    cancelledState
                 case let .failed(message):
                     errorState(message: message)
                 }
@@ -143,8 +145,15 @@ struct JobProgressSection: View {
 
             if !appState.lastOutputURLs.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Output files")
-                        .font(.subheadline.weight(.semibold))
+                    HStack {
+                        Text("Output files")
+                            .font(.subheadline.weight(.semibold))
+                        Spacer()
+                        TranscriptCopyButton(isEnabled: appState.canCopyTranscript) {
+                            appState.copyTranscript()
+                        }
+                        .id(appState.lastOutputURLs)
+                    }
 
                     ForEach(appState.lastOutputURLs, id: \.path) { url in
                         Label(url.lastPathComponent, systemImage: outputSymbol(for: url))
@@ -174,6 +183,44 @@ struct JobProgressSection: View {
             borderOpacity: 0.14,
             tint: Color(nsColor: .systemGreen),
             tintOpacity: 0.035
+        )
+    }
+
+    private var cancelledState: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "stop.circle")
+                    .foregroundStyle(.secondary)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Transcription cancelled.")
+                        .font(.headline)
+                    Text("You can restart this recording or choose another file.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            HStack(spacing: 12) {
+                Button("Restart Transcription") {
+                    appState.runTranscription()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!appState.canStartTranscription)
+
+                Button("Choose Another File") {
+                    appState.chooseAnotherFile()
+                }
+                .buttonStyle(.borderless)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .whisperSurface(
+            padding: 14,
+            cornerRadius: WizardChrome.sectionCornerRadius,
+            fillOpacity: 0.66,
+            borderOpacity: 0.14
         )
     }
 
@@ -234,7 +281,7 @@ struct JobProgressSection: View {
         switch url.pathExtension.lowercased() {
         case OutputFormat.txt.rawValue:
             return "doc.text"
-        case OutputFormat.vtt.rawValue:
+        case OutputFormat.vtt.rawValue, OutputFormat.srt.rawValue:
             return "captions.bubble"
         default:
             return "doc"

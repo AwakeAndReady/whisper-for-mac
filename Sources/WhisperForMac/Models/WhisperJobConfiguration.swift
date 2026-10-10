@@ -19,6 +19,7 @@ enum WhisperTask: String, CaseIterable, Identifiable {
 enum OutputFormat: String, CaseIterable, Identifiable, Codable {
     case txt
     case vtt
+    case srt
 
     var id: String { rawValue }
 

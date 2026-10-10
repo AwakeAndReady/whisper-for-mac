@@ -7,13 +7,14 @@ struct TranscriptionProgressDisplayState: Equatable {
         case running
         case writingOutputs
         case succeeded
+        case cancelled
         case failed
 
         var isActive: Bool {
             switch self {
             case .preparing, .running, .writingOutputs:
                 return true
-            case .inactive, .succeeded, .failed:
+            case .inactive, .succeeded, .cancelled, .failed:
                 return false
             }
         }
@@ -48,6 +49,8 @@ struct TranscriptionProgressSmoother {
         switch jobState {
         case .idle, .awaitingConfirmation:
             return TranscriptionProgressDisplayState(lastUpdate: now, phase: .inactive)
+        case .cancelled:
+            return TranscriptionProgressDisplayState(lastUpdate: now, phase: .cancelled)
         case .failed:
             return TranscriptionProgressDisplayState(lastUpdate: now, phase: .failed)
         case .succeeded:
@@ -99,6 +102,8 @@ struct TranscriptionProgressSmoother {
             return .writingOutputs
         case .succeeded:
             return .succeeded
+        case .cancelled:
+            return .cancelled
         case .failed:
             return .failed
         }

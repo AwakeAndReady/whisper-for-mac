@@ -4,7 +4,7 @@ set -euo pipefail
 MODE="${1:-run}"
 APP_NAME="WhisperForMac"
 BUNDLE_ID="com.rene.whisperformac"
-APP_VERSION="${APP_VERSION:-0.1.0}"
+APP_VERSION="${APP_VERSION:-0.2.0}"
 BUILD_CONFIGURATION="${BUILD_CONFIGURATION:-debug}"
 MIN_SYSTEM_VERSION="15.0"
 ARM64_TRIPLE="arm64-apple-macosx15.0"
@@ -159,6 +159,7 @@ stage_bundle() {
   fi
 
   write_info_plist "$bundle_contents/Info.plist"
+  cp "$ROOT_DIR/LICENSE.md" "$ROOT_DIR/LOGO-LICENSE.md" "$ROOT_DIR/THIRD-PARTY-NOTICES.md" "$bundle_resources/"
   codesign --force --deep --sign - "$bundle_path" >/dev/null
 }
 

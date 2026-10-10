@@ -28,6 +28,15 @@ struct OutputSettingsPane: View {
 
                 Toggle("TXT transcript", isOn: outputBinding(for: .txt))
                 Toggle("VTT subtitles", isOn: outputBinding(for: .vtt))
+                Toggle("SRT subtitles", isOn: outputBinding(for: .srt))
+            }
+
+            Section("When Finished") {
+                Toggle("Notify when Whisper is in the background", isOn: completionBinding(for: \.notifyWhenFinished))
+                Text("Uses macOS notifications. Allow notifications when prompted; their appearance follows your system settings.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Toggle("Automatically reveal output files in Finder", isOn: completionBinding(for: \.revealOutputsWhenFinished))
             }
         }
         .formStyle(.grouped)
@@ -47,6 +56,20 @@ struct OutputSettingsPane: View {
                     appState.preferences.outputFormats.remove(format)
                 }
                 appState.savePreferences()
+            }
+        )
+    }
+
+    private func completionBinding(for keyPath: WritableKeyPath<AppPreferences, Bool>) -> Binding<Bool> {
+        Binding(
+            get: { appState.preferences[keyPath: keyPath] },
+            set: { enabled in
+                if keyPath == \.notifyWhenFinished {
+                    appState.setCompletionNotificationsEnabled(enabled)
+                } else {
+                    appState.preferences[keyPath: keyPath] = enabled
+                    appState.savePreferences()
+                }
             }
         )
     }

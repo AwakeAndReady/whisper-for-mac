@@ -1,6 +1,10 @@
 import Foundation
 
 enum TranscriptEvaluation {
+    static func plainText(from segments: [WhisperSegment]) -> String {
+        usableSegments(from: segments).map(\.text).joined(separator: "\n")
+    }
+
     static func usableSegments(from segments: [WhisperSegment]) -> [WhisperSegment] {
         segments.compactMap { segment in
             let cleanedText = segment.text.trimmingCharacters(in: .whitespacesAndNewlines)

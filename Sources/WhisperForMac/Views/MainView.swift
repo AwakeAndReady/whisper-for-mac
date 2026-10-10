@@ -27,10 +27,10 @@ struct MainView: View {
         .fileImporter(
             isPresented: $appState.showFileImporter,
             allowedContentTypes: MediaFileValidator.importTypes,
-            allowsMultipleSelection: false
+            allowsMultipleSelection: true
         ) { result in
-            if case let .success(urls) = result, let url = urls.first {
-                appState.chooseFile(url)
+            if case let .success(urls) = result {
+                appState.chooseFiles(urls, appending: appState.wizardStep == .file && appState.selectedFileURL != nil)
             }
         }
     }
@@ -85,12 +85,34 @@ struct MainView: View {
                     Spacer()
 
                     Button("Continue") {
-                        appState.wizardStep = .model
+                        appState.wizardStep = appState.selectedInstalledModelInfo == nil ? .model : .review
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
                     .keyboardShortcut(.defaultAction)
                     .disabled(appState.selectedFileURL == nil)
+                }
+            }
+        case .review:
+            stepContainer {
+                QuickStartView()
+                    .environmentObject(appState)
+            } footer: {
+                HStack(spacing: 12) {
+                    Button("Change Settings") {
+                        appState.wizardStep = .model
+                    }
+                    .buttonStyle(.borderless)
+
+                    Spacer()
+
+                    Button(action: { appState.runTranscription() }) {
+                        Label(appState.startButtonTitle, systemImage: "play.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!appState.canQuickStart)
                 }
             }
         case .model:
@@ -157,7 +179,7 @@ struct MainView: View {
                     Spacer()
 
                     Button(action: { appState.runTranscription() }) {
-                        Label("Start Transcription", systemImage: "play.fill")
+                        Label(appState.startButtonTitle, systemImage: "play.fill")
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
@@ -169,7 +191,10 @@ struct MainView: View {
             stepContainer {
                 progressStepContent
             } footer: {
-                if case .succeeded = appState.jobState {
+                if appState.isQueue && !appState.jobState.isBusy {
+                    QueueCompletionActions()
+                }
+                if !appState.isQueue, case .succeeded = appState.jobState {
                     HStack(spacing: 12) {
                         Spacer()
 
@@ -269,10 +294,13 @@ struct MainView: View {
             title: "Results",
             detail: "Transcription status and finished output files appear here."
         ) {
-            JobProgressSection(
-                onOpenModelSettings: { appState.presentSettings(tab: .models) }
-            )
-            .environmentObject(appState)
+            if appState.isQueue {
+                QueueProgressView()
+            } else {
+                JobProgressSection(
+                    onOpenModelSettings: { appState.presentSettings(tab: .models) }
+                )
+            }
         }
     }
 
@@ -283,17 +311,12 @@ struct MainView: View {
                     title: "Install a model first",
                     detail: "Once a model is ready, this step unlocks drag and drop plus quick Finder selection."
                 )
-            } else if let fileURL = appState.selectedFileURL {
-                fileSummary(fileURL)
-
-                Button("Choose Another File") {
-                    appState.chooseAnotherFile()
-                }
-                .buttonStyle(.borderless)
+            } else if appState.selectedFileURL != nil {
+                QueueFileSelectionView()
             } else {
                 DropZoneView(
                     onSelectFile: { appState.showFileImporter = true },
-                    onDropFile: { appState.chooseFile($0) }
+                    onDropFiles: { appState.chooseFiles($0) }
                 )
 
                 if let error = appState.transientErrorMessage {
@@ -407,43 +430,6 @@ struct MainView: View {
         return "Install Core ML encoder in Settings > Models"
     }
 
-    private func fileSummary(_ url: URL) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label(url.lastPathComponent, systemImage: "waveform")
-                .font(.headline)
-
-            Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 8) {
-                GridRow {
-                    Text("Location")
-                        .foregroundStyle(.secondary)
-                    Text(url.deletingLastPathComponent().path)
-                        .multilineTextAlignment(.trailing)
-                }
-
-                GridRow {
-                    Text("Output")
-                        .foregroundStyle(.secondary)
-                    Text(appState.resolvedOutputDirectory?.path ?? "Unavailable")
-                        .multilineTextAlignment(.trailing)
-                }
-
-                GridRow {
-                    Text("Formats")
-                        .foregroundStyle(.secondary)
-                    Text(appState.outputFormatsSummary)
-                }
-            }
-            .font(.callout)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .whisperSurface(
-            padding: 14,
-            cornerRadius: WizardChrome.sectionCornerRadius,
-            fillOpacity: 1,
-            borderOpacity: 0.14
-        )
-    }
-
     private func blockedStep(title: String, detail: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
@@ -506,6 +492,7 @@ struct MainView: View {
         .padding(.trailing, -14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .buttonStyle(.plain)
+        .focusEffectDisabled() // The rounded overlay above already indicates keyboard focus.
         .focused($focusedSidebarStep, equals: step)
         .disabled(!canAccess(step))
     }
@@ -530,18 +517,19 @@ struct MainView: View {
             return true
         case let .running(_, fraction):
             return fraction == nil
-        case .idle, .awaitingConfirmation, .succeeded, .failed:
+        case .idle, .awaitingConfirmation, .succeeded, .cancelled, .failed:
             return false
         }
     }
 
     private func canAccess(_ step: WizardStep) -> Bool {
+        guard !appState.jobState.isBusy else { return step == .progress }
         switch step {
         case .file:
             return true
         case .model:
             return appState.selectedFileURL != nil
-        case .language, .output:
+        case .review, .language, .output:
             return canConfigureOptions
         case .progress:
             return appState.jobState.isBusy || appState.jobState.isTerminal

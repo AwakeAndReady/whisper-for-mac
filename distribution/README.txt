@@ -29,3 +29,11 @@ https://support.apple.com/de-de/102445
 
 After opening the app, use Settings to download a Whisper model. No model
 is included in the app download.
+
+Licensing
+---------
+The software source code is licensed under MIT (LICENSE.md). The logo and
+app icon artwork is covered by the separate LOGO-LICENSE.md exception.
+Publicly distributed modified versions and forks must replace the logo
+and app icons unless permission has been granted. THIRD-PARTY-NOTICES.md
+contains the license notice for the bundled whisper.cpp library.

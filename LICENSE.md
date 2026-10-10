@@ -19,3 +19,10 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## Logo and App Icon Exception
+
+The MIT License above applies to the software source code. The project’s logo
+and app icon artwork is excluded and is governed by [LOGO-LICENSE.md](LOGO-LICENSE.md).
+The code used to generate the artwork remains under the MIT License; the logo
+artwork itself is subject to the exception.

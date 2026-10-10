@@ -66,7 +66,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let alert = NSAlert()
             alert.alertStyle = .warning
             alert.messageText = "Quit Whisper for Mac?"
-            alert.informativeText = "A transcription is still in progress. Quitting will cancel it, and unfinished output may be lost."
+            alert.informativeText = appState.isQueue
+                ? "A queue is still in progress. Quitting will stop it. Finished transcript files will be kept."
+                : "A transcription is still in progress. Quitting will cancel it, and unfinished output may be lost."
             let keepTranscribingButton = alert.addButton(withTitle: "Keep Transcribing")
             keepTranscribingButton.keyEquivalent = "\u{1B}"
             alert.addButton(withTitle: "Quit and Cancel Transcription")
