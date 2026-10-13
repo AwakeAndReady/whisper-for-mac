@@ -5,7 +5,9 @@ Audio is processed entirely on your Mac, without a Python installation or a clou
 
 [Download the latest macOS release](https://github.com/AwakeAndReady/whisper-for-mac/releases/latest)
 
-![Whisper for Mac: transcribing three audio files](docs/wizard-walkthrough.gif)
+<p align="center">
+  <img src="docs/wizard-walkthrough.webp" alt="Whisper for Mac: transcribing three audio files" width="792">
+</p>
 
 ## Features
 
