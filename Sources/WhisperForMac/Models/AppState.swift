@@ -100,6 +100,7 @@ final class AppState: ObservableObject {
     private var transcriptionTask: Task<Void, Never>?
     private var activeTranscriptionID: UUID?
     private var completionNotificationTask: Task<Void, Never>?
+    private var modelDownloadTasks: [UUID: Task<Void, Never>] = [:]
     private var isShuttingDown = false
 
     init(preferencesDefaults: UserDefaults = .standard, transcriptionOperation: TranscriptionOperation? = nil) {
@@ -599,21 +600,27 @@ final class AppState: ObservableObject {
         isShuttingDown = true
         completionNotificationTask?.cancel()
         cancelTranscription()
+        for task in modelDownloadTasks.values { task.cancel() }
     }
 
     func finishShutdown() async {
         await transcriptionTask?.value
+        let downloads = Array(modelDownloadTasks.values)
+        for task in downloads { await task.value }
         await backend.shutdown()
     }
 
     func installModel(_ modelID: String) {
+        guard !isShuttingDown else { return }
         let previousSelectedModelID = selectedModelID
         selectedModelID = modelID
         updateModel(modelID) {
             $0.installState = .installing(progress: nil, bytesReceived: nil, totalBytes: nil)
         }
 
-        Task {
+        let taskID = UUID()
+        modelDownloadTasks[taskID] = Task {
+            defer { modelDownloadTasks.removeValue(forKey: taskID) }
             do {
                 try await backend.installModel(
                     modelID,
@@ -668,11 +675,14 @@ final class AppState: ObservableObject {
     }
 
     func installCoreMLAssets(_ modelID: String) {
+        guard !isShuttingDown else { return }
         updateModel(modelID) {
             $0.coreMLInstallState = .installing(progress: nil, bytesReceived: nil, totalBytes: nil)
         }
 
-        Task {
+        let taskID = UUID()
+        modelDownloadTasks[taskID] = Task {
+            defer { modelDownloadTasks.removeValue(forKey: taskID) }
             do {
                 try await backend.installCoreMLAssets(
                     modelID,

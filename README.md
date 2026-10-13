@@ -1,7 +1,7 @@
 # Whisper for Mac
 
-Whisper for Mac is a fast, native macOS app for offline speech-to-text using OpenAI’s Whisper models.
-It runs entirely on-device with no Python, no cloud, and no setup required — just download a model and start transcribing.
+Whisper for Mac is a native macOS app for offline speech-to-text using OpenAI’s Whisper models.
+Audio is processed entirely on your Mac, without a Python installation or a cloud account.
 
 [Download the latest macOS release](https://github.com/AwakeAndReady/whisper-for-mac/releases/latest)
 
@@ -9,35 +9,27 @@ It runs entirely on-device with no Python, no cloud, and no setup required — j
 
 ## Features
 
-- ⚡ Fast on-device transcription using `whisper.cpp`
-- 🧠 Apple Silicon acceleration (Core ML where available)
-- 🔒 100% offline & private — no data leaves your Mac
-- 🎯 Multiple model support (tiny → large, multilingual + English-only)
-- 🌍 Translation & language detection
-- 📊 Live progress feedback & timestamps
-- 🧵 Optimized multi-threaded inference
-- 🖥️ Clean native macOS UI (SwiftUI)
+- ⚡ Fast local transcription with Apple Silicon acceleration
+- 🎯 Whisper models from Tiny to Large, including multilingual and English-only models
+- 🌍 Automatic language detection and translation into English
+- 📂 Multiple-file transcription queues with cancellation and retry
+- 📝 TXT transcripts and VTT or SRT subtitles
+- 🔒 Verified model downloads with support for resuming interrupted downloads
 - 🌗 Automatic Light and Dark Mode that follows your macOS appearance
 
 ## Using Whisper for Mac
 
-1. Build the app or open a shared `.app` bundle.
-2. Open Settings and install the Whisper model you want to use.
-3. Drag and drop one or more audio or video files into the app, or select multiple files in Finder.
-4. Review the Quick Start summary and start transcribing. Choose **Change Settings** to adjust the model, language, task, or output using the setup wizard.
-5. Find the output files next to the source media or in your configured output folder.
+1. Download and install the app as described below.
+2. Install a Whisper model in **Settings**.
+3. Add one or more audio or video files by dragging them into the app or using the file picker.
+4. Choose the model, language, transcription or translation task, and output formats, then start transcribing. **Quick Start** reuses your saved settings; **Change Settings** opens the setup wizard.
+5. Find the results next to the source media or in your chosen output folder. You can export TXT, VTT, and SRT individually or together.
 
-Quick Start reuses the model, language, and task from the last transcription you started, including after restarting the app. Output formats, the output folder, and the Core ML preference keep their saved defaults. Files must be selected explicitly; transcription only begins when you click **Start Transcription** or **Start Queue**.
+The full transcript can also be copied as plain text, including when exporting only subtitles.
 
-With multiple files, the **File** step shows a removable list in selection order. Add more files with **Add Files…** or drag them onto the list. **Quick Start** reviews the shared settings; the queue processes files sequentially and continues after individual failures. **Results** shows each file’s status and provides Open, Reveal in Finder, and Copy actions for finished files. **Stop Queue** cancels the current file and skips waiting files while keeping completed outputs. **Retry Failed** or **Retry Unfinished** processes only files that have not succeeded. The queue stays in memory for the current session; it is not restored after quitting. A background queue sends one summary notification at the end, and optional automatic Finder reveal runs once.
+Multiple files are processed in order with the same settings. You can stop the queue and retry failed or unfinished files; completed outputs are retained. Queues are not restored after quitting the app.
 
-Choose **TXT transcript**, **VTT subtitles**, or **SRT subtitles** in the Output step or **Settings > Output**, individually or in combination. The selection is saved and appears in the Quick Start summary. SRT uses numbered subtitle cues and comma-separated millisecond timestamps.
-
-After completion, use the copy icon next to **Output files** to copy the full transcript as plain text, even when only VTT or SRT subtitles were exported. The icon briefly shows a checkmark and **Copied** after a successful copy.
-
-Whisper can send a local macOS notification when a transcription finishes while the app is in the background. Allow notifications when macOS asks. In **Settings > Output > When Finished**, you can disable these notifications or enable automatic Finder reveal. Automatic Finder reveal is off by default; **Reveal in Finder** remains available on the results screen.
-
-When you cancel a transcription, the results screen first shows **Cancelling transcription** until processing stops. A neutral **Transcription cancelled** card then lets you restart with the same file and settings or choose another file. Cancelled jobs do not send completion notifications.
+Completion notifications and automatic Finder reveal can be configured in **Settings > Output > When Finished**.
 
 ## Requirements
 
@@ -51,7 +43,27 @@ Download the Universal app ZIP from the [latest GitHub Release](https://github.c
 
 The app is currently distributed without Apple Developer ID signing or notarization. If macOS says it cannot verify the app for malware, click **Done**, then open **System Settings → Privacy & Security → Open Anyway** and confirm **Open**. Only do this if you trust the download from this repository. You may need to repeat the approval for each new download.
 
-Alternatively, build the app locally from this repository:
+<details>
+<summary>Verify a download (optional)</summary>
+
+New releases built with the release workflow include a signed build attestation. With the [GitHub CLI](https://cli.github.com/) installed, run this from the folder containing the downloaded ZIP, replacing `X.Y.Z` with its version:
+
+```bash
+version="X.Y.Z"
+gh attestation verify "WhisperForMac-v${version}-macOS-universal.zip" \
+  --repo AwakeAndReady/whisper-for-mac \
+  --signer-workflow AwakeAndReady/whisper-for-mac/.github/workflows/release.yml \
+  --source-ref "refs/tags/v${version}" \
+  --deny-self-hosted-runners
+```
+
+This verifies the ZIP's integrity and its origin from the release workflow. It is not a malware scan or Apple notarization. Releases published before this feature do not have an attestation.
+
+</details>
+
+## Build and run locally
+
+To build your own copy, install Xcode with Swift 6.2 or newer, then run:
 
 ```bash
 git clone https://github.com/AwakeAndReady/whisper-for-mac.git
@@ -59,44 +71,16 @@ cd whisper-for-mac
 ./script/build_and_run.sh
 ```
 
-The build script creates app bundles in `dist/`:
+The script builds and opens the app. App bundles are saved in `dist/`.
 
-- `WhisperForMac.app` (Universal)
-- `WhisperForMac-AppleSilicon.app`
-- `WhisperForMac-Intel.app`
+Additional modes:
 
-A built `.app` can also be shared directly with another user.
-
-To publish a release, push a tag such as `v0.1.0`. The [release workflow](.github/workflows/release.yml) builds and checks a Universal app, then uploads its ZIP to GitHub Releases. GitHub Actions must be enabled for this repository.
-
-## Development
-
-Use the build script for local development:
-
-```bash
-./script/build_and_run.sh
-```
-
-Other useful modes:
-
-```bash
-./script/build_and_run.sh --verify
-./script/build_and_run.sh --logs
-./script/build_and_run.sh --telemetry
-./script/build_and_run.sh --debug
-```
-
-## Current Limitations
-
-- No Whisper model is bundled with the app
-- The first transcription requires downloading a model
-- The app is already usable, but it is still evolving
-
-## Notes
-
-- The app is local-first and does not upload files for transcription
-- Models are downloaded on demand and stored locally
-- The default outputs are `.txt` and `.vtt`
+| Command | Purpose |
+| --- | --- |
+| `./script/build_and_run.sh --verify` | Build, launch, and check that the app process starts |
+| `./script/build_and_run.sh --logs` | Build and launch with live process logs |
+| `./script/build_and_run.sh --telemetry` | Build and launch with local app diagnostic logs |
+| `./script/build_and_run.sh --debug` | Build and open the app in the LLDB debugger |
 
 ## License
 
@@ -108,4 +92,4 @@ forks must use their own logo and app icons unless permission has been granted.
 
 ## Feedback
 
-If the project looks useful to you, issues, ideas, and real-world testing feedback are very welcome.
+Report bugs or suggest improvements through [GitHub issues](https://github.com/AwakeAndReady/whisper-for-mac/issues).

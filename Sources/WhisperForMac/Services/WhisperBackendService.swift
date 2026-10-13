@@ -6,98 +6,6 @@ struct BackendSnapshot {
     var models: [WhisperModelInfo]
 }
 
-private enum RemoteModelSize {
-    case known(Int64)
-    case unavailable
-}
-
-private final class ModelDownloadSession: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
-    typealias ProgressHandler = @Sendable (Double?, Int64, Int64?) -> Void
-
-    private var continuation: CheckedContinuation<(URL, URLResponse), Error>?
-    private var progressHandler: ProgressHandler?
-    private var downloadedFileURL: URL?
-    private var downloadError: Error?
-    private var session: URLSession?
-
-    func download(
-        from url: URL,
-        progressHandler: @escaping ProgressHandler
-    ) async throws -> (URL, URLResponse) {
-        self.progressHandler = progressHandler
-
-        let configuration = URLSessionConfiguration.ephemeral
-        let session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
-        self.session = session
-
-        return try await withCheckedThrowingContinuation { continuation in
-            self.continuation = continuation
-            session.downloadTask(with: url).resume()
-        }
-    }
-
-    func urlSession(
-        _ session: URLSession,
-        downloadTask: URLSessionDownloadTask,
-        didWriteData bytesWritten: Int64,
-        totalBytesWritten: Int64,
-        totalBytesExpectedToWrite: Int64
-    ) {
-        let totalBytes = totalBytesExpectedToWrite > 0 ? totalBytesExpectedToWrite : nil
-        let progress = totalBytes.map { Double(totalBytesWritten) / Double($0) }
-        progressHandler?(progress, totalBytesWritten, totalBytes)
-    }
-
-    func urlSession(
-        _ session: URLSession,
-        downloadTask: URLSessionDownloadTask,
-        didFinishDownloadingTo location: URL
-    ) {
-        let fileManager = FileManager.default
-        let stableURL = fileManager.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString)
-            .appendingPathExtension("bin")
-
-        do {
-            if fileManager.fileExists(atPath: stableURL.path) {
-                try fileManager.removeItem(at: stableURL)
-            }
-            try fileManager.moveItem(at: location, to: stableURL)
-            downloadedFileURL = stableURL
-        } catch {
-            downloadError = error
-        }
-    }
-
-    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        defer {
-            session.finishTasksAndInvalidate()
-            self.session = nil
-            continuation = nil
-            progressHandler = nil
-            downloadedFileURL = nil
-            downloadError = nil
-        }
-
-        if let error {
-            continuation?.resume(throwing: error)
-            return
-        }
-
-        if let downloadError {
-            continuation?.resume(throwing: downloadError)
-            return
-        }
-
-        guard let downloadedFileURL, let response = task.response else {
-            continuation?.resume(throwing: BackendServiceError.installFailed("The model download finished without a file."))
-            return
-        }
-
-        continuation?.resume(returning: (downloadedFileURL, response))
-    }
-}
-
 enum BackendServiceError: LocalizedError {
     case unknownModel
     case invalidModelSelection
@@ -128,7 +36,7 @@ final class WhisperBackendService {
     private let audioExtractor = AudioSampleExtractor()
     private let engine = WhisperEngine()
     private let transcriptWriter = WhisperTranscriptWriter()
-    private var remoteModelSizeCache: [String: RemoteModelSize] = [:]
+    private var activeDownloadArtifacts: Set<String> = []
 
     func refreshSnapshot() async -> BackendSnapshot {
         do {
@@ -166,29 +74,28 @@ final class WhisperBackendService {
         guard let descriptor = SupportedModels.descriptor(for: modelID) else {
             throw BackendServiceError.unknownModel
         }
+        guard activeDownloadArtifacts.insert(descriptor.filename).inserted else {
+            throw BackendServiceError.installFailed("\(descriptor.displayName) is already downloading.")
+        }
+        defer { activeDownloadArtifacts.remove(descriptor.filename) }
 
         try ensureDirectories()
         update("Downloading \(descriptor.displayName)")
 
-        let downloader = ModelDownloadSession()
-        let (temporaryURL, response) = try await downloader.download(from: descriptor.downloadURL) { progress, bytesReceived, totalBytes in
+        let temporaryURL = try await VerifiedModelDownloader.download(
+            descriptor.modelArtifact,
+            in: paths.appSupportDirectory.appendingPathComponent("downloads", isDirectory: true)
+        ) { progress, bytesReceived, totalBytes in
             Task { @MainActor in
                 updateProgress(progress, bytesReceived, totalBytes)
             }
-        }
-        defer { try? FileManager.default.removeItem(at: temporaryURL) }
-        if let httpResponse = response as? HTTPURLResponse, !(200 ..< 300).contains(httpResponse.statusCode) {
-            throw BackendServiceError.installFailed("Downloading \(descriptor.displayName) failed with status \(httpResponse.statusCode).")
         }
 
         let destination = paths.modelsDirectory.appendingPathComponent(descriptor.filename)
         let fileManager = FileManager.default
         try fileManager.createDirectory(at: paths.modelsDirectory, withIntermediateDirectories: true)
         try await changeModel(at: destination) {
-            if fileManager.fileExists(atPath: destination.path) {
-                try fileManager.removeItem(at: destination)
-            }
-            try fileManager.moveItem(at: temporaryURL, to: destination)
+            try ModelInstaller.replaceFile(temporaryURL, at: destination)
         }
         update("Installed \(descriptor.displayName)")
     }
@@ -201,9 +108,13 @@ final class WhisperBackendService {
         guard let descriptor = SupportedModels.descriptor(for: modelID) else {
             throw BackendServiceError.unknownModel
         }
-        guard let downloadURL = descriptor.coreMLEncoderDownloadURL else {
+        guard let artifact = descriptor.coreMLArtifact else {
             throw BackendServiceError.coreMLUnavailable
         }
+        guard activeDownloadArtifacts.insert(artifact.filename).inserted else {
+            throw BackendServiceError.installFailed("The Core ML encoder for \(descriptor.displayName) is already downloading.")
+        }
+        defer { activeDownloadArtifacts.remove(artifact.filename) }
 
         try ensureDirectories()
         let modelURL = paths.modelsDirectory.appendingPathComponent(descriptor.filename)
@@ -213,27 +124,30 @@ final class WhisperBackendService {
 
         update("Downloading Core ML encoder for \(descriptor.displayName)")
 
-        let downloader = ModelDownloadSession()
-        let (temporaryURL, response) = try await downloader.download(from: downloadURL) { progress, bytesReceived, totalBytes in
+        let temporaryURL = try await VerifiedModelDownloader.download(
+            artifact,
+            in: paths.appSupportDirectory.appendingPathComponent("downloads", isDirectory: true)
+        ) { progress, bytesReceived, totalBytes in
             Task { @MainActor in
                 updateProgress(progress, bytesReceived, totalBytes)
             }
-        }
-        defer { try? FileManager.default.removeItem(at: temporaryURL) }
-        if let httpResponse = response as? HTTPURLResponse, !(200 ..< 300).contains(httpResponse.statusCode) {
-            throw BackendServiceError.installFailed("Downloading the Core ML encoder for \(descriptor.displayName) failed with status \(httpResponse.statusCode).")
         }
 
         update("Installing Core ML encoder for \(descriptor.displayName)")
         try await changeModel(at: modelURL) {
             try installCoreMLArchive(temporaryURL, for: descriptor)
         }
+        try? FileManager.default.removeItem(at: temporaryURL)
         update("Installed Core ML encoder for \(descriptor.displayName)")
     }
 
     func removeModel(_ modelID: String, update: @escaping @MainActor (String) -> Void) async throws {
         guard let descriptor = SupportedModels.descriptor(for: modelID) else {
             throw BackendServiceError.unknownModel
+        }
+        guard !activeDownloadArtifacts.contains(descriptor.filename),
+              !activeDownloadArtifacts.contains(descriptor.coreMLEncoderArchiveFilename) else {
+            throw BackendServiceError.installFailed("Wait for the model download to finish before removing it.")
         }
 
         let destination = paths.modelsDirectory.appendingPathComponent(descriptor.filename)
@@ -247,6 +161,11 @@ final class WhisperBackendService {
             }
             try WhisperModelLoadPath.removeAlias(for: destination)
         }
+        let downloadsDirectory = paths.appSupportDirectory.appendingPathComponent("downloads", isDirectory: true)
+        try? FileManager.default.removeItem(at: VerifiedModelDownloader.partialURL(for: descriptor.modelArtifact, in: downloadsDirectory))
+        if let artifact = descriptor.coreMLArtifact {
+            try? FileManager.default.removeItem(at: VerifiedModelDownloader.partialURL(for: artifact, in: downloadsDirectory))
+        }
 
         update("Removed \(descriptor.displayName)")
     }
@@ -258,6 +177,9 @@ final class WhisperBackendService {
         guard descriptor.supportsCoreMLAcceleration else {
             throw BackendServiceError.coreMLUnavailable
         }
+        guard !activeDownloadArtifacts.contains(descriptor.coreMLEncoderArchiveFilename) else {
+            throw BackendServiceError.installFailed("Wait for the Core ML download to finish before removing it.")
+        }
 
         let destination = paths.modelsDirectory.appendingPathComponent(descriptor.coreMLEncoderFilename)
         let modelURL = paths.modelsDirectory.appendingPathComponent(descriptor.filename)
@@ -265,6 +187,10 @@ final class WhisperBackendService {
             if FileManager.default.fileExists(atPath: destination.path) {
                 try FileManager.default.removeItem(at: destination)
             }
+        }
+        if let artifact = descriptor.coreMLArtifact {
+            let downloadsDirectory = paths.appSupportDirectory.appendingPathComponent("downloads", isDirectory: true)
+            try? FileManager.default.removeItem(at: VerifiedModelDownloader.partialURL(for: artifact, in: downloadsDirectory))
         }
 
         update("Removed Core ML encoder for \(descriptor.displayName)")
@@ -383,7 +309,7 @@ final class WhisperBackendService {
         let coreMLURL = paths.modelsDirectory.appendingPathComponent(descriptor.coreMLEncoderFilename)
         let coreMLAssetsAvailable = fileManager.fileExists(atPath: coreMLURL.path)
         let coreMLSizeBytes = coreMLAssetsAvailable ? directorySize(at: coreMLURL) : nil
-        let remoteSizeBytes = isInstalled ? nil : await remoteSize(for: descriptor)
+        let remoteSizeBytes = isInstalled ? nil : descriptor.modelArtifact.size
 
         return WhisperModelInfo(
             id: descriptor.id,
@@ -418,48 +344,6 @@ final class WhisperBackendService {
         }
 
         return coreMLAssetsAvailable ? .installed : .notInstalled
-    }
-
-    private func remoteSize(for descriptor: WhisperModelDescriptor) async -> Int64? {
-        if let cached = remoteModelSizeCache[descriptor.id] {
-            switch cached {
-            case let .known(size):
-                return size
-            case .unavailable:
-                return nil
-            }
-        }
-
-        var request = URLRequest(url: descriptor.downloadURL)
-        request.httpMethod = "HEAD"
-        request.timeoutInterval = 15
-
-        do {
-            let (_, response) = try await URLSession.shared.data(for: request)
-            let size = contentLength(from: response)
-            remoteModelSizeCache[descriptor.id] = size.map(RemoteModelSize.known) ?? .unavailable
-            return size
-        } catch {
-            remoteModelSizeCache[descriptor.id] = .unavailable
-            return nil
-        }
-    }
-
-    private func contentLength(from response: URLResponse) -> Int64? {
-        if response.expectedContentLength > 0 {
-            return response.expectedContentLength
-        }
-
-        guard
-            let httpResponse = response as? HTTPURLResponse,
-            let contentLength = httpResponse.value(forHTTPHeaderField: "Content-Length"),
-            let bytes = Int64(contentLength),
-            bytes > 0
-        else {
-            return nil
-        }
-
-        return bytes
     }
 
     private func transcribeOnce(
@@ -512,10 +396,9 @@ final class WhisperBackendService {
 
     private func installCoreMLArchive(_ archiveURL: URL, for descriptor: WhisperModelDescriptor) throws {
         let fileManager = FileManager.default
-        let extractionRoot = fileManager.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let extractionRoot = paths.modelsDirectory
+            .appendingPathComponent(".encoder-\(UUID().uuidString)", isDirectory: true)
         defer {
-            try? fileManager.removeItem(at: archiveURL)
             try? fileManager.removeItem(at: extractionRoot)
         }
 
@@ -539,10 +422,7 @@ final class WhisperBackendService {
         }
 
         let destination = paths.modelsDirectory.appendingPathComponent(descriptor.coreMLEncoderFilename)
-        if fileManager.fileExists(atPath: destination.path) {
-            try fileManager.removeItem(at: destination)
-        }
-        try fileManager.moveItem(at: extractedEncoder, to: destination)
+        try ModelInstaller.replaceDirectory(extractedEncoder, at: destination)
     }
 
     private func changeModel(at modelURL: URL, _ operation: () throws -> Void) async throws {
